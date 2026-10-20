@@ -103,6 +103,9 @@ class Sim:
     # SolverMuJoCo への追加引数 (iterations など)。impratio は摩擦方向の拘束を法線方向より硬くする比で、既定の 1 だと
     # 握って持ち上げた物がじわじわ滑り落ちる。バラ積みのスクリプト方策の成功率は 1 で 0.20、5 で 0.52、10 で 0.59、20 で 0.49、30 で 0.39
     SOLVER_KW = dict(impratio=10.0)
+    # Newton の接触バッファ (1 環境あたり)。既定の見積もりは形状のペア数ベースで約 11000 点 (環境数に比例して GPU メモリを食う) だが、
+    # バラ積みでの実測は 1 環境あたり最大 166 点。None なら既定の見積もり
+    RIGID_CONTACTS_PER_ENV = None
     NJMAX, NCONMAX = 512, 256  # MuJoCo の拘束・接触バッファ。物体が多いときはサブクラスで増やす
     CAMERA_TARGET = BOX_POS
 
@@ -219,6 +222,8 @@ class Sim:
         for k in self.arm_q_index:
             tgt[k] = q[k]
         self.control.joint_target_q.assign(tgt)
+        if self.RIGID_CONTACTS_PER_ENV is not None:
+            self.model.rigid_contact_max = self.RIGID_CONTACTS_PER_ENV * self.num_envs
         self.contacts = self.model.contacts()
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
 

@@ -95,6 +95,7 @@ def select_target(obj_pos, obj_quat, obj_names, rng):
 
 class PileEnv(ge.GraspEnv):
     NJMAX, NCONMAX = 3000, 600  # 1 環境ぶん。静止した山で約 150 点、落下中のピークでもこの程度
+    RIGID_CONTACTS_PER_ENV = 400  # 実測の最大は 166 点 (山を落とす間はもっと多いので余裕を見る)
     CAMERA_TARGET = (*BIN_CENTER, 0.02)
     yaw_period = np.pi  # 長軸は 180 度対称
 

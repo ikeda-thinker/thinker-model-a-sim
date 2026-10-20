@@ -28,6 +28,7 @@ import sim
 
 class VecGraspEnv(sim.Sim):
     NJMAX, NCONMAX = gp.PileEnv.NJMAX, gp.PileEnv.NCONMAX
+    RIGID_CONTACTS_PER_ENV = gp.PileEnv.RIGID_CONTACTS_PER_ENV
     ARM_Q_DEG = ge.ARM_Q_DEG
     CAMERA_TARGET = (*gp.BIN_CENTER, 0.02)
     act_dim = ge.GraspEnv.act_dim
@@ -375,6 +376,7 @@ if __name__ == "__main__":
     parser.add_argument("--yaw-noise-deg", type=float, default=float(np.degrees(ge.EST_YAW_STD)))
     parser.add_argument("--close-steps", type=int, default=VecGraspEnv.CLOSE_STEPS, help="スクリプト方策が閉じるのにかけるステップ数")
     parser.add_argument("--impratio", type=float, default=None, help="MuJoCo の impratio (摩擦拘束の硬さ)。既定は sim.Sim.SOLVER_KW")
+    parser.add_argument("--contacts-per-env", type=int, default=None, help="Newton の接触バッファの 1 環境あたりの点数 (0 で既定の見積もり)")
     parser.add_argument("--watch", type=int, default=0, help="爪の状態を表示する環境の番号 (GL ではパネルで変えられる)")
     parser.add_argument("--print-every", type=int, default=0, help="この step ごとに注目環境の爪の状態を表示 (0 で表示しない)")
     parser.set_defaults(num_frames=10**9)
@@ -382,6 +384,8 @@ if __name__ == "__main__":
     ge.EST_POS_STD = args.pos_noise_mm * 1e-3
     ge.EST_YAW_STD = np.radians(args.yaw_noise_deg)
     VecGraspEnv.CLOSE_STEPS = args.close_steps
+    if args.contacts_per_env is not None:
+        VecGraspEnv.RIGID_CONTACTS_PER_ENV = args.contacts_per_env or None
     if args.impratio is not None:
         VecGraspEnv.SOLVER_KW = {**sim.Sim.SOLVER_KW, "impratio": args.impratio}
     env = VecGraspEnv(viewer, args, seed=args.seed, scripted=True)

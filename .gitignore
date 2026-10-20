@@ -1,0 +1,14 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Public mesh packages: fetch with tools/fetch_packages.sh
+packages/ur_description/
+packages/robotiq_hande_description/

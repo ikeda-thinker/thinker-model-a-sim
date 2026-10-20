@@ -44,6 +44,15 @@ MIMIC_TIMECONST = 0.004  # 指の連動拘束の時定数 [s]。MuJoCo の制約
 # 接触を拾う距離 [m]。既定は 0.1 で、小物の山だと触れていないペアまで接触に数えて重くなる (30 個で約 1400 点)
 CONTACT_GAP = 0.003
 HANDE_STROKE = 0.025 # Hande の片指ストローク [m]。関節値 0 が閉、0.025 が全開
+# 爪の接触。爪は金属で、先端に滑り止めのゴムが貼ってある (当たり判定は先端の区間が別の凸包)。
+# MuJoCo の摩擦はペアの大きい方を使うので、金属側の値は物体の摩擦 (grasp_pile.MU) より小さければ物体側の値になる。
+# 既定の condim=3 はねじり摩擦が無く、2 点の挟み込みだと物体が指先を結ぶ軸まわりに回って滑るので、滑り止めは condim=4
+NAIL_MU = 0.4  # 金属 (ステンレス)
+# 滑り止め。実機は NITTO の黒テープ (薄く剥がれにくい)。以前の 3M の滑り止めテープは摩擦が大きすぎて
+# 部品の間に指先を差し込みにくかったので変えた、とのこと。正確な値は不明で目安
+NAIL_PAD_MU = 1.0
+NAIL_PAD_MU_TORSIONAL = 0.005  # [m] 接触面の半径くらい
+NAIL_PAD_CONDIM = 4
 
 ROOT = Path(__file__).resolve().parent.parent
 PKGS = ROOT / "packages"
@@ -75,6 +84,15 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
         joint_damping_mode="passive",
     )
     Path(f.name).unlink(missing_ok=True)
+    # 自己衝突は切っているが、左右の爪同士だけは当てる (実機では全閉の手前で爪先がぶつかる)
+    nail = {
+        f: {s for s, b in enumerate(robot.shape_body) if b >= 0 and robot.body_label[b].endswith(f"{f}_thinker_TF1_nail_link")}
+        for f in ("f1", "f2")
+    }
+    robot.shape_collision_filter_pairs = [
+        (a, b) for a, b in robot.shape_collision_filter_pairs
+        if not ((a in nail["f1"] and b in nail["f2"]) or (a in nail["f2"] and b in nail["f1"]))
+    ]
     return robot
 
 
@@ -157,6 +175,30 @@ class Sim:
         self.model.shape_material_ke.fill_(CONTACT_KE)
         self.model.shape_material_kd.fill_(CONTACT_KD)
         self.model.shape_gap.fill_(CONTACT_GAP)
+        body_label = list(self.model.body_label)
+        shape_body = self.model.shape_body.numpy()
+        collide = self.model.shape_flags.numpy() & int(newton.ShapeFlags.COLLIDE_SHAPES)
+        nail_shapes = [s for s, b in enumerate(shape_body) if b >= 0 and collide[s] and body_label[b].endswith("_nail_link")]
+        # 滑り止めは爪ごとに最も先端側 (nail_link の z が大きい) の当たり判定
+        tf = self.model.shape_transform.numpy()
+
+        def max_z(s):  # 形状の頂点を body 座標に直したときの z の最大 (クォータニオンは xyzw)
+            v = np.asarray(self.model.shape_source[s].vertices)
+            q, w = tf[s, 3:6], tf[s, 6]
+            t = 2.0 * np.cross(q, v)
+            return float((v + w * t + np.cross(q, t))[:, 2].max() + tf[s, 2])
+
+        tip_z = {s: max_z(s) for s in nail_shapes}
+        pad_shapes = [max((s for s in nail_shapes if shape_body[s] == b), key=tip_z.get) for b in {shape_body[s] for s in nail_shapes}]
+        for arr, shapes, v in (
+            (self.model.shape_material_mu, nail_shapes, NAIL_MU),
+            (self.model.shape_material_mu, pad_shapes, NAIL_PAD_MU),
+            (self.model.shape_material_mu_torsional, pad_shapes, NAIL_PAD_MU_TORSIONAL),
+            (self.model.mujoco.condim, pad_shapes, NAIL_PAD_CONDIM),
+        ):
+            a = arr.numpy()
+            a[shapes] = v
+            arr.assign(a)
         # force-space の接触剛性は Newton の接触 (model.collide) を使うときだけ効く
         self.solver = newton.solvers.SolverMuJoCo(
             self.model, use_mujoco_contacts=False, njmax=self.NJMAX, nconmax=self.NCONMAX, **self.SOLVER_KW

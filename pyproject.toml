@@ -5,8 +5,17 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "imgui-bundle>=1.92.900",
     "newton[sim]>=1.7.0",
     "pyglet>=2.1.19",
+    "torch>=2.11.0",
     "viser>=1.1.1",
     "yourdfpy>=0.0.60",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"

@@ -479,15 +479,16 @@
       <inertia ixx="1.5e-4" ixy="0" ixz="0" iyy="1.1e-4" iyz="0" izz="0.86e-4"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- Think Hand F (tools/convert_meshes.py で CAD から作成)。上端の板が爪の穴 (深さ 8mm) に奥まで入る位置 -->
+      <origin rpy="0 0 0" xyz="0.0039 0 0.037"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/base.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf.stl"/>
       </geometry>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0039 0 0.037"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/base.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/thf.stl"/>
       </geometry>
     </collision>
   </link>
@@ -734,15 +735,16 @@
       <inertia ixx="1.5e-4" ixy="0" ixz="0" iyy="1.1e-4" iyz="0" izz="0.86e-4"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- Think Hand F (tools/convert_meshes.py で CAD から作成)。上端の板が爪の穴 (深さ 8mm) に奥まで入る位置 -->
+      <origin rpy="0 0 0" xyz="0.0039 0 0.037"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/base.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf.stl"/>
       </geometry>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0039 0 0.037"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/base.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/thf.stl"/>
       </geometry>
     </collision>
   </link>
@@ -1076,20 +1078,57 @@
   <!-- ************** -->
   <link name="f1_thinker_TF1_nail_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="0 0.007 0.015"/>
+      <origin rpy="0 0 0" xyz="0 0.015 0.025"/>
       <mass value="0.01"/>
       <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/visual/default-nail.dae"/>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/visual/pile-nail.stl"/>
       </geometry>
     </visual>
+    <!-- バラ積み用の爪 (tools/convert_meshes.py で CAD から作成)。曲がった形なので長さ方向に切った凸包 6 個 + 先端の滑り止め (pile-nail-pad) -->
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/default-nail.dae"/>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-0.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-1.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-2.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-3.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-4.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-5.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-pad.stl"/>
       </geometry>
     </collision>
   </link>
@@ -1104,7 +1143,7 @@
   <joint name="f1_thinker_TF1_tip_joint" type="fixed">
     <parent link="f1_thinker_TF1_nail_link"/>
     <child link="f1_thinker_TF1_tip_link"/>
-    <origin rpy="0 0 0.0" xyz="0 0.0153 0.034"/>
+    <origin rpy="0 0 0.0" xyz="0 0.0238 0.045"/>
   </joint>
   <!-- ******************************** -->
   <!-- fictive links to ease definition -->
@@ -1138,20 +1177,57 @@
   <!-- ************** -->
   <link name="f2_thinker_TF1_nail_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="0 0.007 0.015"/>
+      <origin rpy="0 0 0" xyz="0 0.015 0.025"/>
       <mass value="0.01"/>
       <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/visual/default-nail.dae"/>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/visual/pile-nail.stl"/>
       </geometry>
     </visual>
+    <!-- バラ積み用の爪 (tools/convert_meshes.py で CAD から作成)。曲がった形なので長さ方向に切った凸包 6 個 + 先端の滑り止め (pile-nail-pad) -->
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/default-nail.dae"/>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-0.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-1.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-2.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-3.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-4.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-5.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/nails/thinker-TF1/meshes/collision/pile-nail-pad.stl"/>
       </geometry>
     </collision>
   </link>
@@ -1166,7 +1242,7 @@
   <joint name="f2_thinker_TF1_tip_joint" type="fixed">
     <parent link="f2_thinker_TF1_nail_link"/>
     <child link="f2_thinker_TF1_tip_link"/>
-    <origin rpy="0 0 -3.141592653589793" xyz="0 0.0153 0.034"/>
+    <origin rpy="0 0 -3.141592653589793" xyz="0 0.0238 0.045"/>
   </joint>
   <!-- ***************************** -->
   <!-- add fixed joints to put items -->

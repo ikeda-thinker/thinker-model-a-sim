@@ -8,6 +8,7 @@
 - done になった環境は step() の中で自動リセットされ、戻り値の obs は次のエピソードの最初の観測
 
     uv run tools/grasp_vec.py --viewer null --num-envs 64 --episodes 200   # スクリプト方策で動作確認
+    uv run tools/grasp_vec.py --num-envs 4 --print-every 5                 # 爪の状態をコンソールと GL のパネル・グラフに表示
 """
 import sys
 import time
@@ -30,6 +31,7 @@ class VecGraspEnv(sim.Sim):
     ARM_Q_DEG = ge.ARM_Q_DEG
     CAMERA_TARGET = (*gp.BIN_CENTER, 0.02)
     act_dim = ge.GraspEnv.act_dim
+    PHASE_TOL = 1e-3  # スクリプト方策が「到達」とみなす関節目標の誤差 [rad]
     LIBRARY_ROUNDS = 2  # 山のライブラリ: 全環境で同時に作る回数 (num_envs * 回数 個の山)
 
     def add_scene(self, builder):
@@ -53,6 +55,12 @@ class VecGraspEnv(sim.Sim):
         # joint_target_q は dof 数ではなく q の数 (自由関節は 7) で並ぶ。ロボットの関節は q と dof が同じ番号
         self.T = self.control.joint_target_q.shape[0] // N
         self.tgt_init = self.control.joint_target_q.numpy().reshape(N, self.T)[0].copy()
+        # URDF の初期値はグリッパ全閉で、バラ積み爪だと左右の爪が 12mm めり込み接触があふれる。開いた状態を初期値にする
+        opening = ge.GRIP_OPEN_MAX_MM * 1e-3
+        self.q_init[[self.gripper_q, self.gripper_rq]] = opening
+        self.tgt_init[[self.gripper_dof, self.gripper_r_dof]] = opening
+        self.control.joint_target_q.assign(np.tile(self.tgt_init, N))
+        self.write(np.tile(self.q_init, (N, 1)), np.zeros((N, self.D)))
         self.tips = np.array(self.tips_of_world0())
         self.ik = ge.ArmIK(args.urdf, np.radians(ge.ARM_Q_DEG), n=N)
 
@@ -61,6 +69,7 @@ class VecGraspEnv(sim.Sim):
         self.hold = np.zeros(N, dtype=int)
         self.lift_max = np.zeros(N)
         self.tip_z_min = np.zeros(N)
+        self.phi_prev = np.zeros(N)
         self.obj_z0 = np.zeros(N)
         self.target_k = np.zeros(N, dtype=int)
         self.target_type = [""] * N
@@ -78,12 +87,16 @@ class VecGraspEnv(sim.Sim):
         self.q_lift = np.zeros((N, 6))
         self.phase = np.zeros(N, dtype=int)
         self.phase_n = np.zeros(N, dtype=int)
+        self.disp = None  # 表示用のスナップショット (step_env のリセット前の値)
+        self.watch = 0  # 爪の状態を表示する環境
 
         t0 = time.time()
         self.build_library()
         print(f"山のライブラリ: {len(self.piles)} 個 ({time.time() - t0:.1f} s)")
         self.reset_envs(np.arange(N))
         self.obs = self.observe()
+        if hasattr(viewer, "register_ui_callback"):
+            viewer.register_ui_callback(self.nail_ui, "side")
 
     @property
     def obs_dim(self):
@@ -190,7 +203,11 @@ class VecGraspEnv(sim.Sim):
         self.act_prev[idx] = 0.0
         self.nail_hist[idx] = 0.0
         self.t[idx], self.hold[idx], self.lift_max[idx] = 0, 0, 0.0
-        self.tip_z_min[idx] = self.tip_mid(self.read()[2])[idx, 2]
+        bq = self.read()[2]
+        tip = self.tip_mid(bq)
+        self.tip_z_min[idx] = tip[idx, 2]
+        obj = bq[idx, np.array(self.obj_bodies)[self.target_k[idx]], :3]
+        self.phi_prev[idx] = ge.potential(np.linalg.norm(tip[idx] - obj, axis=1), 0, obj[:, 2] - self.obj_z0[idx])
 
     # ---- 計測 ----
     def tip_mid(self, bq):
@@ -253,21 +270,25 @@ class VecGraspEnv(sim.Sim):
         d = np.linalg.norm(tip - obj, axis=1)
         nails = self.nail_hist[:, -1].reshape(N, 2, 3)  # [env, 指, (x, y, z)]
         touching = (np.abs(nails[:, :, 2]) > ge.NAIL_ACTIVE_MM) | (np.abs(nails[:, :, :2]).max(axis=2) > ge.NAIL_ACTIVE_DEG)
+        self.disp = dict(
+            t=self.t.copy(), phase=self.phase.copy(), nail=self.nail_hist[:, -1].copy(), touching=touching,
+            grip=q[:, self.gripper_q] * 1e3, lift=lift, type=list(self.target_type),
+        )
         self.hold = np.where(lift > ge.LIFT_SUCCESS, self.hold + 1, 0)
         success = self.hold >= ge.HOLD_STEPS
         dropped = (self.lift_max > 0.01) & (lift < 0.003)
         self.tip_z_min = np.minimum(self.tip_z_min, tip[:, 2])
         missed = (tip[:, 2] - self.tip_z_min > ge.MISS_RISE) & (lift < 0.005) & ~dropped
 
+        phi = ge.potential(d, touching.sum(axis=1), lift)
         reward = (
-            0.2 * (1.0 - np.tanh(d / 0.02))
-            + 0.2 * touching.sum(axis=1)
-            + 2.0 * np.clip(lift / ge.LIFT_SUCCESS, 0.0, 1.0)
+            phi - self.phi_prev
             + 20.0 * success
             - 5.0 * (dropped | missed)
             - 0.01 * ((a - self.act_prev) ** 2).sum(axis=1)
         )
         self.act_prev = a
+        self.phi_prev = phi
         done = success | dropped | missed | (self.t >= ge.EP_STEPS) | ~np.isfinite(obj).all(axis=1)
         info = dict(
             success=success & done, dropped=dropped & done, missed=missed & done,
@@ -275,6 +296,8 @@ class VecGraspEnv(sim.Sim):
             type=[self.target_type[w] for w in range(N)],  # リセット前の対象の形状
         )
         done_idx = np.nonzero(done)[0]
+        if info["timeout"].any():
+            info["final_obs"] = self.observe()  # 時間切れ環境の value ブートストラップ用 (リセット前の観測)
         self.reset_envs(done_idx)
         self.obs = self.observe()
         return self.obs, reward.astype(np.float32), done, info
@@ -289,15 +312,54 @@ class VecGraspEnv(sim.Sim):
         a = (dq - (1.0 - e) * self.act_filt[:, : len(ge.ACT_JOINTS)]) / e
         g = (grip - (1.0 - e) * self.act_filt[:, -1]) / e
         self.phase_n += 1
-        to_close = (self.phase == 0) & (np.abs(self.q_cmd - self.q_grasp).max(axis=1) < 1e-3) & (self.phase_n > 5)
+        to_close = (self.phase == 0) & (np.abs(self.q_cmd - self.q_grasp).max(axis=1) < self.PHASE_TOL) & (self.phase_n > 5)
         to_lift = (self.phase == 1) & (self.phase_n > 15)
         self.phase = np.where(to_close, 1, np.where(to_lift, 2, self.phase))
         self.phase_n = np.where(to_close | to_lift, 0, self.phase_n)
         return np.clip(np.column_stack([a, g]), -1.0, 1.0)
 
+    # ---- 爪の状態の表示 ----
+    PHASE_NAMES = ("descend", "close", "lift")
+
+    def nail_text(self, w):
+        d = self.disp
+        n = d["nail"][w]
+        phase = self.PHASE_NAMES[d["phase"][w]] if self.scripted else ""
+        tc = "".join("*" if t else "-" for t in d["touching"][w])
+        return (
+            f"env{w} t={d['t'][w]:3d} {phase:7s} grip={d['grip'][w]:4.1f}mm lift={d['lift'][w] * 1e3:+5.1f}mm | "
+            f"f1 push={n[2]:4.2f}mm x={n[0]:+5.2f} y={n[1]:+5.2f}deg | "
+            f"f2 push={n[5]:4.2f}mm x={n[3]:+5.2f} y={n[4]:+5.2f}deg | touch={tc}"
+        )
+
+    def nail_ui(self, imgui):
+        """GL ビューアの左パネル: 注目環境の爪の値をバーで出す"""
+        _, self.watch = imgui.slider_int("watch env", self.watch, 0, self.num_envs - 1)
+        d = self.disp
+        if d is None:
+            return
+        w = self.watch
+        phase = self.PHASE_NAMES[d["phase"][w]] if self.scripted else ""
+        imgui.text(f"t={d['t'][w]}  {phase}  target={d['type'][w]}")
+        imgui.text(f"grip {d['grip'][w]:.1f} mm   lift {d['lift'][w] * 1e3:+.1f} mm")
+        for f in range(2):
+            x, y, z = d["nail"][w, 3 * f : 3 * f + 3]
+            imgui.separator()
+            imgui.text(f"f{f + 1} nail   {'TOUCH' if d['touching'][w, f] else '-'}")
+            imgui.progress_bar(float(np.clip(z / sim.NAIL_PUSH_MAX_MM, 0, 1)), imgui.ImVec2(-1, 0), f"push {z:.2f} mm")
+            for name, v in (("x", x), ("y", y)):  # 傾きは中央が 0、±7deg が端
+                imgui.progress_bar(float(np.clip(0.5 + v / 14.0, 0, 1)), imgui.ImVec2(-1, 0), f"tilt {name} {v:+.2f} deg")
+
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
+        if self.disp is not None:
+            w = self.watch
+            for j, key in enumerate(ge.NAIL_KEYS):
+                unit = "mm" if key.endswith("z") else "deg"
+                self.viewer.log_scalar(f"nail/{key}_{unit}", float(self.disp["nail"][w, j]))
+            # 全環境の押し込み量 [env, 指] をヒートマップで
+            self.viewer.log_array("nail/push_mm_all_envs", self.disp["nail"][:, [2, 5]].astype(np.float32))
         self.viewer.end_frame()
 
 
@@ -309,11 +371,16 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pos-noise-mm", type=float, default=ge.EST_POS_STD * 1e3)
     parser.add_argument("--yaw-noise-deg", type=float, default=float(np.degrees(ge.EST_YAW_STD)))
+    parser.add_argument("--watch", type=int, default=0, help="爪の状態を表示する環境の番号 (GL ではパネルで変えられる)")
+    parser.add_argument("--print-every", type=int, default=0, help="この step ごとに注目環境の爪の状態を表示 (0 で表示しない)")
     parser.set_defaults(num_frames=10**9)
     viewer, args = newton.examples.init(parser)
     ge.EST_POS_STD = args.pos_noise_mm * 1e-3
     ge.EST_YAW_STD = np.radians(args.yaw_noise_deg)
     env = VecGraspEnv(viewer, args, seed=args.seed, scripted=True)
+    env.watch = args.watch
+    if hasattr(viewer, "hide_loading_splash"):  # init() が出したスプラッシュ。run() を使わないので自分で消す
+        viewer.hide_loading_splash()
     print(f"num_envs={env.num_envs} obs_dim={env.obs_dim} act_dim={env.act_dim}")
 
     stats = {}
@@ -323,6 +390,12 @@ if __name__ == "__main__":
         obs, rew, done, info = env.step_env(env.scripted_action())
         env.render()  # null ビューアでは何もしない。GL / viser ではここでイベント処理・描画が回る
         steps += env.num_envs
+        w = env.watch
+        if args.print_every and (done[w] or env.disp["t"][w] % args.print_every == 0):
+            print(env.nail_text(w))
+            if done[w]:
+                res = next(k for k in ("success", "dropped", "missed", "timeout") if info[k][w])
+                print(f"=> env{w} {info['type'][w]}: {res}")
         for w in np.nonzero(done)[0]:
             s = stats.setdefault(info["type"][w], [0, 0, 0, 0, 0])  # 試行, 成功, 落下, 空振り, 時間切れ
             s[0] += 1

@@ -29,7 +29,7 @@ ARM_Q_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)  # 下向きの基準姿勢 (p
 ACT_JOINTS = (0, 1, 2, 3, 5)
 ACT_SCALE = 0.03  # 1 制御ステップあたりの関節目標の最大変化 [rad]
 ACT_EMA = 0.5  # 行動の平滑化 (1 で平滑化なし)
-GRIP_OPEN_MAX_MM = 15.0  # 開度行動 +1 に対応する片指の開き [mm]
+GRIP_OPEN_MAX_MM = 25.0  # 開度行動 +1 に対応する片指の開き [mm]。バラ積み爪は先端が内側に寄るので全ストロークまで使う
 CTRL_FRAMES = 3  # 1 制御ステップの物理フレーム数 (60Hz / 3 = 20Hz)
 EP_STEPS = 160  # 8 s
 
@@ -51,6 +51,12 @@ NAIL_ACTIVE_DEG = 0.5  # 回転がこれを超えたら接触とみなす [deg]
 NAIL_HIST = 3  # 観測に入れるネイル値の履歴長
 
 NAIL_KEYS = ("f1_x", "f1_y", "f1_z", "f2_x", "f2_y", "f2_z")
+
+
+def potential(d, n_touch, lift):
+    """報酬整形のポテンシャル Φ。報酬には差分 Φ(s') - Φ(s) だけを入れるので、
+    近くで粘っても報酬は貯まらず、エピソード全体の整形分は Φ の終値 - 初期値で頭打ちになる"""
+    return 0.2 * (1.0 - np.tanh(d / 0.02)) + 0.2 * n_touch + 2.0 * np.clip(lift / LIFT_SUCCESS, 0.0, 1.0)
 
 
 def yaw_quat(yaw):
@@ -225,6 +231,8 @@ class GraspEnv(sim.Sim):
         for _ in range(10):  # 開いた状態で落ち着かせる
             super().step()
         self.nail_hist = [self.nail_vec()] * NAIL_HIST
+        obj = self.state_0.body_q.numpy()[self.box_body][:3]
+        self.phi_prev = potential(np.linalg.norm(self.tip_mid() - obj), 0, obj[2] - self.obj_z0)
         return self.observe()
 
     def step_env(self, action):
@@ -256,15 +264,15 @@ class GraspEnv(sim.Sim):
         self.tip_z_min = min(self.tip_z_min, self.tip_mid()[2])
         missed = (self.tip_mid()[2] - self.tip_z_min > MISS_RISE) and lift < 0.005 and not dropped
 
+        phi = potential(d, sum(touching), lift)
         reward = (
-            0.2 * (1.0 - np.tanh(d / 0.02))
-            + 0.2 * sum(touching)
-            + 2.0 * np.clip(lift / LIFT_SUCCESS, 0.0, 1.0)
+            phi - self.phi_prev
             + (20.0 if success else 0.0)
             - (5.0 if dropped or missed else 0.0)
             - 0.01 * float(np.sum((a - self.act_prev) ** 2))
         )
         self.act_prev = a
+        self.phi_prev = phi
         done = success or dropped or missed or self.t >= EP_STEPS or not np.isfinite(obj).all()
         info = {"success": success, "dropped": dropped, "missed": missed, "lift": lift, "dist": d, "touching": touching}
         return self.observe(), float(reward), done, info

@@ -10,7 +10,8 @@ parts = {
     "fingers/thinker-TF1/meshes/visual/x.stl": ((0.012, 0.012, 0.012), (0, 0, 0)),
     "fingers/thinker-TF1/meshes/visual/y.stl": ((0.012, 0.012, 0.012), (0, 0, 0)),
     "fingers/thinker-TF1/meshes/visual/z.stl": ((0.008, 0.008, 0.0276), (0, 0, 0.0138)),
-    "grippers/robotiq-hande/meshes/visual/finger-slider.stl": ((0.01, 0.02, 0.04), (0, 0, 0.02)),
+    # Hand-E の下面から少し出るブロックだけ。THF はこれに金具 (形状不明、未モデル化) で付く
+    "grippers/robotiq-hande/meshes/visual/finger-slider.stl": ((0.01, 0.02, 0.006), (0, 0, 0.003)),
 }
 
 # 爪は根元 (z=0) から URDF の tip_link (0, 0.0153, 0.034) へ斜めに細くなる柱。

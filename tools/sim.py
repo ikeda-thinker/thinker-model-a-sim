@@ -40,7 +40,8 @@ BOX_POS = (0.4607, 0.405, 0.0665)  # 爪の x 中点、爪先の y、グリッ�
 # 爪のバネ (2000 N/m) より柔らかいため変位の大半がめり込みに回っていた
 CONTACT_KE = 5e4
 CONTACT_KD = 200.0
-HANDE_STROKE = 0.025  # Hande の片指ストローク [m]。関節値 0 が閉、0.025 が全開
+MIMIC_TIMECONST = 0.004  # 指の連動拘束の時定数 [s]。MuJoCo の制約は 2*sim_dt (1/1200 s) 以上でないと不安定
+HANDE_STROKE = 0.025 # Hande の片指ストローク [m]。関節値 0 が閉、0.025 が全開
 
 ROOT = Path(__file__).resolve().parent.parent
 PKGS = ROOT / "packages"
@@ -142,6 +143,11 @@ class Sim:
         self.model.shape_material_kd.fill_(CONTACT_KD)
         # force-space の接触剛性は Newton の接触 (model.collide) を使うときだけ効く
         self.solver = newton.solvers.SolverMuJoCo(self.model, use_mujoco_contacts=False, njmax=512, nconmax=256)
+        # Hande の左右の指は URDF の mimic で連動させている。MuJoCo の等式拘束の既定 (時定数 0.02 s) だと柔らかすぎて、
+        # 把持物を持ち上げる加速で左右差が ±14mm まで揺れた。固くすると ±1.6mm
+        eq_solref = self.solver.mjw_model.eq_solref.numpy()
+        eq_solref[..., 0] = MIMIC_TIMECONST
+        self.solver.mjw_model.eq_solref.assign(eq_solref)
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()

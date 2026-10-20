@@ -43,6 +43,7 @@ EST_POS_STD = 0.003  # [m]
 EST_YAW_STD = np.radians(5.0)
 
 PRE_HEIGHT = 0.04  # q_pre での爪先の高さ (ワーク上面から) [m]
+MISS_RISE = 0.02  # 爪先が最低点からこれだけ上がっても物体が浮いていなければ失敗 [m]
 LIFT_SUCCESS = 0.03  # 持ち上げ成功とみなす高さ [m]
 HOLD_STEPS = 20  # 成功に必要な保持ステップ数 (1 s)
 NAIL_ACTIVE_MM = 0.2  # 押し込みがこれを超えたら接触とみなす [mm]
@@ -56,9 +57,14 @@ def yaw_quat(yaw):
     return wp.quat_from_axis_angle(wp.vec3(0.0, 0.0, 1.0), float(yaw))
 
 
+def wrap_period(a, period):
+    """対称性の周期で角度差を ±period/2 に畳む。"""
+    return (a + period / 2) % period - period / 2
+
+
 def wrap_quarter(a):
     """立方体は 90 度対称なので yaw 差を ±45 度に畳む。"""
-    return (a + np.pi / 4) % (np.pi / 2) - np.pi / 4
+    return wrap_period(a, np.pi / 2)
 
 
 class ArmIK:
@@ -129,10 +135,14 @@ class GraspEnv(sim.Sim):
         self.ik = ArmIK(args.urdf, np.radians(ARM_Q_DEG))
         labels = list(self.model.body_label)
         self.tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("f1", "f2")]
+        self.init_objects()
+        self.reset()
+
+    def init_objects(self):
         j = next(i for i, l in enumerate(self.model.joint_label) if self.model.joint_child.numpy()[i] == self.box_body)
         self.obj_q = int(self.model.joint_q_start.numpy()[j])  # ワークの自由関節 (位置 3 + 四元数 4)
         self.obj_dof = int(self.model.joint_qd_start.numpy()[j])
-        self.reset()
+        self.obj_q_slots = [self.obj_q]
 
     # ---- RL インターフェース ----
     @property
@@ -140,8 +150,11 @@ class GraspEnv(sim.Sim):
         return len(self.observe())
 
     act_dim = len(ACT_JOINTS) + 1
+    yaw_period = np.pi / 2  # ワークの yaw 対称性の周期 (立方体は 90 度)
+    yaw_valid = 1.0  # 0 なら yaw に意味がない (球など)
 
-    def reset(self):
+    def spawn_objects(self):
+        """ワークを置き、状態に反映する。self.est_pos / est_yaw / grasp_yaw / obj_half_h / obj_z0 / box_body を決める。"""
         rng = self.rng
         self.obj_xy = np.array(OBJ_XY) + rng.uniform(-OBJ_XY_RANGE, OBJ_XY_RANGE, 2)
         self.obj_yaw = rng.uniform(-np.pi, np.pi)
@@ -149,16 +162,29 @@ class GraspEnv(sim.Sim):
         self.est_yaw = self.obj_yaw + rng.normal(0.0, EST_YAW_STD)
         # 爪の並び (手先 y) をワークの辺に直交させる。90 度対称なので基準姿勢に近い側を選ぶ
         self.grasp_yaw = wrap_quarter(self.est_yaw)
-        self.q_pre = self.ik.solve(self.est_pos + [0.0, 0.0, OBJ_SIZE / 2 + PRE_HEIGHT], self.grasp_yaw)
-
+        self.obj_half_h = OBJ_SIZE / 2  # 推定位置 (物体の中心) から上面までの高さ
+        self.obj_z0 = OBJ_SIZE / 2
         q = self.q0.copy()
-        q[self.arm_q] = self.q_pre
         q[self.obj_q : self.obj_q + 3] = [*self.obj_xy, OBJ_SIZE / 2]
         q[self.obj_q + 3 : self.obj_q + 7] = list(yaw_quat(self.obj_yaw))
+        self.assign_q(q)
+
+    def assign_q(self, q):
         for s in (self.state_0, self.state_1):
             s.joint_q.assign(q)
             s.joint_qd.zero_()
             newton.eval_fk(self.model, s.joint_q, s.joint_qd, s)
+
+    def reset(self):
+        self.spawn_objects()
+        self.q_pre = self.ik.solve(self.est_pos + [0.0, 0.0, self.obj_half_h + PRE_HEIGHT], self.grasp_yaw)
+        # ロボットは前のエピソードの指・ネイルの状態を引きずらないよう q0 から作り直す。物体の姿勢だけ引き継ぐ
+        cur = self.state_0.joint_q.numpy()
+        q = self.q0.copy()
+        for k in self.obj_q_slots:
+            q[k : k + 7] = cur[k : k + 7]
+        q[self.arm_q] = self.q_pre
+        self.assign_q(q)
         tgt = self.control.joint_target_q.numpy()
         tgt[self.arm_q] = self.q_pre
         self.control.joint_target_q.assign(tgt)
@@ -170,8 +196,8 @@ class GraspEnv(sim.Sim):
         self.nail_hist = [np.zeros(len(NAIL_KEYS))] * NAIL_HIST
         self.t = 0
         self.hold = 0
-        self.obj_z0 = OBJ_SIZE / 2
         self.lift_max = 0.0
+        self.tip_z_min = self.tip_mid()[2]
         for _ in range(10):  # 開いた状態で落ち着かせる
             super().step()
         self.nail_hist = [self.nail_vec()] * NAIL_HIST
@@ -202,18 +228,21 @@ class GraspEnv(sim.Sim):
         self.hold = self.hold + 1 if lift > LIFT_SUCCESS else 0
         success = self.hold >= HOLD_STEPS
         dropped = self.lift_max > 0.01 and lift < 0.003
+        # 持ち上げ動作をしたのに物体がついてこない (空振り・掴み損ね)。爪先が最低点から MISS_RISE 上がった時点で打ち切る
+        self.tip_z_min = min(self.tip_z_min, self.tip_mid()[2])
+        missed = (self.tip_mid()[2] - self.tip_z_min > MISS_RISE) and lift < 0.005 and not dropped
 
         reward = (
             0.2 * (1.0 - np.tanh(d / 0.02))
             + 0.2 * sum(touching)
             + 2.0 * np.clip(lift / LIFT_SUCCESS, 0.0, 1.0)
             + (20.0 if success else 0.0)
-            - (5.0 if dropped else 0.0)
+            - (5.0 if dropped or missed else 0.0)
             - 0.01 * float(np.sum((a - self.act_prev) ** 2))
         )
         self.act_prev = a
-        done = success or dropped or self.t >= EP_STEPS or not np.isfinite(obj).all()
-        info = {"success": success, "dropped": dropped, "lift": lift, "dist": d, "touching": touching}
+        done = success or dropped or missed or self.t >= EP_STEPS or not np.isfinite(obj).all()
+        info = {"success": success, "dropped": dropped, "missed": missed, "lift": lift, "dist": d, "touching": touching}
         return self.observe(), float(reward), done, info
 
     def observe(self):
@@ -225,7 +254,7 @@ class GraspEnv(sim.Sim):
         c, s = np.cos(-tool_yaw), np.sin(-tool_yaw)
         rel = self.est_pos - tip
         rel = np.array([c * rel[0] - s * rel[1], s * rel[0] + c * rel[1], rel[2]])
-        dyaw = wrap_quarter(self.est_yaw - tool_yaw)
+        dyaw = wrap_period(self.est_yaw - tool_yaw, self.yaw_period)
         return np.concatenate(
             [
                 q[self.arm_q],
@@ -234,7 +263,7 @@ class GraspEnv(sim.Sim):
                 [self.gripper_opening_mm() / GRIP_OPEN_MAX_MM],
                 np.concatenate(self.nail_hist) / np.tile([7.0, 7.0, sim.NAIL_PUSH_MAX_MM] * 2, NAIL_HIST),
                 rel / 0.05,
-                [np.sin(4 * dyaw), np.cos(4 * dyaw)],
+                [self.yaw_valid * np.sin(2 * np.pi / self.yaw_period * dyaw), self.yaw_valid * np.cos(2 * np.pi / self.yaw_period * dyaw)],
                 self.act_filt,
             ]
         ).astype(np.float32)
@@ -258,9 +287,10 @@ class ScriptedPolicy:
     def __init__(self, env):
         self.env = env
         e = env
-        top = e.est_pos[2] + OBJ_SIZE / 2
+        top = e.est_pos[2] + e.obj_half_h
         xy = e.est_pos[:2]
-        self.q_grasp = e.ik.solve([*xy, top - self.GRASP_DEPTH], e.grasp_yaw, q_init=e.q_pre)
+        depth = min(self.GRASP_DEPTH, 1.2 * e.obj_half_h)  # 小さい物は中心の高さまで
+        self.q_grasp = e.ik.solve([*xy, top - depth], e.grasp_yaw, q_init=e.q_pre)
         self.q_lift = e.ik.solve([*xy, top + 0.06], e.grasp_yaw, q_init=e.q_pre)
         self.phase, self.n = "descend", 0
 
@@ -289,8 +319,8 @@ class ScriptedPolicy:
 class Demo:
     """newton.examples.run 用のラッパ。スクリプト方策でエピソードを回して結果を表示する。"""
 
-    def __init__(self, viewer, args):
-        self.env = GraspEnv(viewer, args, seed=args.seed)
+    def __init__(self, viewer, args, env_cls=GraspEnv):
+        self.env = env_cls(viewer, args, seed=args.seed)
         self.args = args
         self.episode = 0
         self.results = []
@@ -322,7 +352,7 @@ class Demo:
                 f"push=({n[2]:+.2f},{n[5]:+.2f})mm touch={info['touching']}"
             )
         if done:
-            print(f"=> success={info['success']} dropped={info['dropped']} return={self.ret:.1f}")
+            print(f"=> success={info['success']} dropped={info['dropped']} missed={info['missed']} return={self.ret:.1f}")
             self.results.append(info["success"])
             self.episode += 1
             if self.episode < self.args.episodes:

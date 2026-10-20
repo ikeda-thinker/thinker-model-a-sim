@@ -41,6 +41,8 @@ BOX_POS = (0.4607, 0.405, 0.0665)  # 爪の x 中点、爪先の y、グリッ�
 CONTACT_KE = 5e4
 CONTACT_KD = 200.0
 MIMIC_TIMECONST = 0.004  # 指の連動拘束の時定数 [s]。MuJoCo の制約は 2*sim_dt (1/1200 s) 以上でないと不安定
+# 接触を拾う距離 [m]。既定は 0.1 で、小物の山だと触れていないペアまで接触に数えて重くなる (30 個で約 1400 点)
+CONTACT_GAP = 0.003
 HANDE_STROKE = 0.025 # Hande の片指ストローク [m]。関節値 0 が閉、0.025 が全開
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -79,6 +81,8 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
 class Sim:
     # アームの初期姿勢・目標 [deg] (shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3)。None なら全関節 0
     ARM_Q_DEG = None
+    use_graph = True
+    NJMAX, NCONMAX = 512, 256  # MuJoCo の拘束・接触バッファ。物体が多いときはサブクラスで増やす
     CAMERA_TARGET = BOX_POS
 
     def __init__(self, viewer, args):
@@ -136,13 +140,16 @@ class Sim:
 
         gj = next(i for i, l in enumerate(labels) if l.endswith("robotiq_hande_left_finger_joint"))
         self.gripper_q, self.gripper_dof = int(q_start[gj]), int(qd_start[gj])
+        gr = next(i for i, l in enumerate(labels) if l.endswith("robotiq_hande_right_finger_joint"))
+        self.gripper_r_dof = int(qd_start[gr])  # 右指も左指と同じ目標にする (下の set_gripper)
         self.box_body = next((i for i, l in enumerate(self.model.body_label) if l.endswith("box")), None)
 
         self.model.mujoco.solref_mode.fill_(SOLREF_MODE_FORCE_SPACE)
         self.model.shape_material_ke.fill_(CONTACT_KE)
         self.model.shape_material_kd.fill_(CONTACT_KD)
+        self.model.shape_gap.fill_(CONTACT_GAP)
         # force-space の接触剛性は Newton の接触 (model.collide) を使うときだけ効く
-        self.solver = newton.solvers.SolverMuJoCo(self.model, use_mujoco_contacts=False, njmax=512, nconmax=256)
+        self.solver = newton.solvers.SolverMuJoCo(self.model, use_mujoco_contacts=False, njmax=self.NJMAX, nconmax=self.NCONMAX)
         # Hande の左右の指は URDF の mimic で連動させている。MuJoCo の等式拘束の既定 (時定数 0.02 s) だと柔らかすぎて、
         # 把持物を持ち上げる加速で左右差が ±14mm まで揺れた。固くすると ±1.6mm
         eq_solref = self.solver.mjw_model.eq_solref.numpy()
@@ -160,6 +167,7 @@ class Sim:
         self.contacts = self.model.contacts()
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
 
+        self.graph = None
         self.q0 = self.model.joint_q.numpy().copy()
         print(f"bodies={self.model.body_count} joints={self.model.joint_count} dofs={self.model.joint_dof_count}")
 
@@ -203,7 +211,9 @@ class Sim:
     def set_gripper(self, opening_mm):
         """Hande の片指の開き [mm] (0=閉、25=全開)。右指は URDF の mimic で追従する。"""
         tgt = self.control.joint_target_q.numpy()
-        tgt[self.gripper_dof] = np.clip(opening_mm * 1e-3, 0.0, HANDE_STROKE)
+        # 右指の目標を放っておくと URDF 取り込み時の値 (リミットの中間 13.4mm) のまま左指と綱引きになり、
+        # 全閉にしても片指 6.6mm で止まる。mimic 拘束と矛盾しないよう同じ値を入れる
+        tgt[self.gripper_dof] = tgt[self.gripper_r_dof] = np.clip(opening_mm * 1e-3, 0.0, HANDE_STROKE)
         self.control.joint_target_q.assign(tgt)
 
     def gripper_opening_mm(self):
@@ -232,14 +242,28 @@ class Sim:
             tgt[self.nail_dof_index[f"{finger}_{axis}"]] = v
         self.control.joint_target_q.assign(tgt)
 
-    def step(self):
-        # 目標は control の既定値 (全関節 0) のまま。ここで self.control の目標を書き換えて制御する
+    def _simulate_frame(self):
         for _ in range(self.substeps):
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
             self.model.collide(self.state_0, self.contacts)
             self.solver.step(self.state_0, self.state_1, self.control, self.contacts, self.sim_dt)
             self.state_0, self.state_1 = self.state_1, self.state_0
+
+    def step(self):
+        # 目標は control の既定値 (全関節 0) のまま。ここで self.control の目標を書き換えて制御する
+        # 1 フレーム (substeps 回) を CUDA グラフにして起動する。カーネル起動のオーバーヘッドが支配的なため。
+        # substeps が偶数なので state_0 / state_1 は元の向きに戻り、グラフが指す配列は変わらない。
+        # 目標 (control) と状態 (state) は assign() で中身だけ書き換えること (配列を差し替えるとグラフに反映されない)
+        if self.use_graph and self.graph is None:
+            self._simulate_frame()  # ウォームアップ (カーネルのコンパイル・メモリ確保) 兼 1 フレーム目
+            with wp.ScopedCapture() as capture:
+                self._simulate_frame()
+            self.graph = capture.graph
+        elif self.graph is not None:
+            wp.capture_launch(self.graph)
+        else:
+            self._simulate_frame()
         self.sim_time += self.frame_dt
 
     def render(self):

@@ -100,7 +100,9 @@ class Sim:
     # アームの初期姿勢・目標 [deg] (shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3)。None なら全関節 0
     ARM_Q_DEG = None
     use_graph = True
-    SOLVER_KW = {}  # SolverMuJoCo への追加引数 (iterations など)
+    # SolverMuJoCo への追加引数 (iterations など)。impratio は摩擦方向の拘束を法線方向より硬くする比で、既定の 1 だと
+    # 握って持ち上げた物がじわじわ滑り落ちる。バラ積みのスクリプト方策の成功率は 1 で 0.20、5 で 0.52、10 で 0.59、20 で 0.49、30 で 0.39
+    SOLVER_KW = dict(impratio=10.0)
     NJMAX, NCONMAX = 512, 256  # MuJoCo の拘束・接触バッファ。物体が多いときはサブクラスで増やす
     CAMERA_TARGET = BOX_POS
 

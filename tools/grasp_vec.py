@@ -31,6 +31,7 @@ class VecGraspEnv(sim.Sim):
     ARM_Q_DEG = ge.ARM_Q_DEG
     CAMERA_TARGET = (*gp.BIN_CENTER, 0.02)
     act_dim = ge.GraspEnv.act_dim
+    CLOSE_STEPS = 1  # スクリプト方策が開から閉へゆっくり閉じるステップ数。1 だと一気に閉じて物体を弾く
     PHASE_TOL = 1e-3  # スクリプト方策が「到達」とみなす関節目標の誤差 [rad]
     LIBRARY_ROUNDS = 2  # 山のライブラリ: 全環境で同時に作る回数 (num_envs * 回数 個の山)
 
@@ -305,7 +306,8 @@ class VecGraspEnv(sim.Sim):
     # ---- 確認用のスクリプト方策 (下降 → 閉じる → 持ち上げ) ----
     def scripted_action(self):
         goal = np.where((self.phase == 2)[:, None], self.q_lift, self.q_grasp)
-        grip = np.where(self.phase == 0, 1.0, -1.0)
+        ramp = 1.0 - 2.0 * np.clip(self.phase_n / self.CLOSE_STEPS, 0.0, 1.0)  # phase 1 に入ってから 1 → -1
+        grip = np.where(self.phase == 0, 1.0, np.where(self.phase == 1, ramp, -1.0))
         dq = (goal - self.q_cmd)[:, list(ge.ACT_JOINTS)] / ge.ACT_SCALE
         dq /= np.maximum(1.0, np.abs(dq).max(axis=1, keepdims=True))
         e = ge.ACT_EMA
@@ -313,7 +315,7 @@ class VecGraspEnv(sim.Sim):
         g = (grip - (1.0 - e) * self.act_filt[:, -1]) / e
         self.phase_n += 1
         to_close = (self.phase == 0) & (np.abs(self.q_cmd - self.q_grasp).max(axis=1) < self.PHASE_TOL) & (self.phase_n > 5)
-        to_lift = (self.phase == 1) & (self.phase_n > 15)
+        to_lift = (self.phase == 1) & (self.phase_n > self.CLOSE_STEPS + 14)
         self.phase = np.where(to_close, 1, np.where(to_lift, 2, self.phase))
         self.phase_n = np.where(to_close | to_lift, 0, self.phase_n)
         return np.clip(np.column_stack([a, g]), -1.0, 1.0)
@@ -371,12 +373,17 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pos-noise-mm", type=float, default=ge.EST_POS_STD * 1e3)
     parser.add_argument("--yaw-noise-deg", type=float, default=float(np.degrees(ge.EST_YAW_STD)))
+    parser.add_argument("--close-steps", type=int, default=VecGraspEnv.CLOSE_STEPS, help="スクリプト方策が閉じるのにかけるステップ数")
+    parser.add_argument("--impratio", type=float, default=None, help="MuJoCo の impratio (摩擦拘束の硬さ)。既定は sim.Sim.SOLVER_KW")
     parser.add_argument("--watch", type=int, default=0, help="爪の状態を表示する環境の番号 (GL ではパネルで変えられる)")
     parser.add_argument("--print-every", type=int, default=0, help="この step ごとに注目環境の爪の状態を表示 (0 で表示しない)")
     parser.set_defaults(num_frames=10**9)
     viewer, args = newton.examples.init(parser)
     ge.EST_POS_STD = args.pos_noise_mm * 1e-3
     ge.EST_YAW_STD = np.radians(args.yaw_noise_deg)
+    VecGraspEnv.CLOSE_STEPS = args.close_steps
+    if args.impratio is not None:
+        VecGraspEnv.SOLVER_KW = {**sim.Sim.SOLVER_KW, "impratio": args.impratio}
     env = VecGraspEnv(viewer, args, seed=args.seed, scripted=True)
     env.watch = args.watch
     if hasattr(viewer, "hide_loading_splash"):  # init() が出したスプラッシュ。run() を使わないので自分で消す

@@ -15,6 +15,8 @@ import warp as wp
 import newton
 from newton import JointTargetMode
 
+NAIL_PUSH_MAX_MM = 3.9  # 最大押し込み量。z_joint は 0 (デフォルト) 〜 -3.9mm
+
 ROOT = Path(__file__).resolve().parent.parent
 PKGS = ROOT / "packages"
 
@@ -66,6 +68,17 @@ class Sim:
         builder.add_ground_plane()
 
         self.model = builder.finalize()
+        # ネイル関節 (f1/f2 の x,y,z) の q / dof インデックス。全て 1 自由度なので同じ並び
+        labels = list(self.model.joint_label)
+        q_start = self.model.joint_q_start.numpy()
+        qd_start = self.model.joint_qd_start.numpy()
+        self.nail_q_index, self.nail_dof_index = {}, {}
+        for f in ("f1", "f2"):
+            for a in ("x", "y", "z"):
+                j = next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_{a}_joint"))
+                self.nail_q_index[f"{f}_{a}"] = int(q_start[j])
+                self.nail_dof_index[f"{f}_{a}"] = int(qd_start[j])
+
         self.solver = newton.solvers.SolverMuJoCo(self.model)
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
@@ -79,24 +92,24 @@ class Sim:
         self.viewer.set_model(self.model)
 
     def nail_state(self):
-        """各ネイルの {関節名: 値} を返す。x/y は回転 [deg] (±7)、z は押し込み [mm] (0-4)。"""
+        """各ネイルの {関節名: 値} を返す。x/y は回転 [deg] (±7)、z は押し込み量 [mm] (0=デフォルト、-3.9=最大押し込み)。"""
         q = self.state_0.joint_q.numpy()
         out = {}
         for key, idx in self.nail_q_index.items():
             out[key] = float(np.degrees(q[idx])) if key.endswith(("_x", "_y")) else float(q[idx] * 1e3)
         return out
 
-    def set_nail_target(self, finger, x_deg=0.0, y_deg=0.0, z_mm=0.0):
+    def set_nail_target(self, finger, x_deg=0.0, y_deg=0.0, push_mm=0.0):
         """finger は "f1" か "f2"。リミットでクランプして位置目標にする。"""
         vals = {
             "x": np.radians(np.clip(x_deg, -7.0, 7.0)),
             "y": np.radians(np.clip(y_deg, -7.0, 7.0)),
-            "z": np.clip(z_mm, 0.0, 4.0) * 1e-3,
+            "z": np.clip(push_mm, -NAIL_PUSH_MAX_MM, 0.0) * 1e-3,
         }
-        tgt = self.control.joint_target_pos.numpy()
+        tgt = self.control.joint_target_q.numpy()
         for axis, v in vals.items():
             tgt[self.nail_dof_index[f"{finger}_{axis}"]] = v
-        self.control.joint_target_pos.assign(tgt)
+        self.control.joint_target_q.assign(tgt)
 
     def step(self):
         # 目標は control の既定値 (全関節 0) のまま。ここで self.control の目標を書き換えて制御する
@@ -118,7 +131,7 @@ class Sim:
         q = self.state_0.joint_q.numpy()
         if not np.isfinite(q).all():
             raise ValueError("joint_q has non-finite values")
-        print("final joint_q:", np.round(q, 3))
+        print("nail state:", self.nail_state())
 
 
 if __name__ == "__main__":

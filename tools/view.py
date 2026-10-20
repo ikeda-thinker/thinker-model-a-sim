@@ -39,7 +39,7 @@ with server.gui.add_folder("Joints"):
     for name, (lo, hi) in viewer.get_actuated_joint_limits().items():
         lo = -3.14159 if lo is None else lo
         hi = 3.14159 if hi is None else hi
-        s = server.gui.add_slider(name, lo, hi, 0.001, min(max(0.0, lo), hi))
+        s = server.gui.add_slider(name, lo, hi, 0.0001 if name.endswith("_z_joint") else 0.001, min(max(0.0, lo), hi))
         s.on_update(lambda _: viewer.update_cfg([x.value for x in sliders]))
         sliders.append(s)
 viewer.update_cfg([s.value for s in sliders])

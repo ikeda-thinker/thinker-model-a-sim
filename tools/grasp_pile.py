@@ -28,6 +28,7 @@ DROP_Z0 = 0.03  # 1 段目の高さ [m]
 DROP_DZ = 0.02  # 段の間隔 [m]
 SETTLE_FRAMES = 120  # 落として静止するまで待つフレーム数 (2 s)
 TARGET_RADIUS = 0.025  # ビン中心からこの距離以内の物体を対象の候補にする [m]
+TOP_BAND = 0.01  # 候補の中で一番高いものからこの高さ以内のものを、埋もれていない対象とみなす [m]
 DENSITY = 2500.0  # [kg/m^3]
 MU = 0.8
 
@@ -64,14 +65,18 @@ def random_quat(rng):
 def select_target(obj_pos, obj_quat, obj_names, rng):
     """静止した山から対象を 1 個選び、ノイズ付きの推定姿勢などを返す。obj_pos は [n, 3]、obj_quat は [n, 4] (xyzw)。
 
-    山の上の方から選ぶ (ビン中心に近いものの中で一番高いもの)。
+    山の上の方から選ぶ。一番高いものだけだと山の上に乗りやすい形 (block など) に偏るので、
+    ビン中心に近く、一番高いものから TOP_BAND 以内の高さにあるものの中で、形状を均等に選んでからその形状で一番高いものにする。
     """
     near = np.hypot(obj_pos[:, 0] - BIN_CENTER[0], obj_pos[:, 1] - BIN_CENTER[1]) < TARGET_RADIUS
     inside = obj_pos[:, 2] < WALL_H + 0.05
     cand = np.nonzero(near & inside)[0]
     if len(cand) == 0:
         cand = np.argsort(np.hypot(obj_pos[:, 0] - BIN_CENTER[0], obj_pos[:, 1] - BIN_CENTER[1]))[:1]
-    k = int(cand[np.argmax(obj_pos[cand, 2])])
+    top = cand[obj_pos[cand, 2] >= obj_pos[cand, 2].max() - TOP_BAND]
+    kind = rng.choice(sorted({obj_names[i] for i in top}))
+    same = top[[obj_names[i] == kind for i in top]]
+    k = int(same[np.argmax(obj_pos[same, 2])])
     name = obj_names[k]
     spec = SHAPES[name]
     rot = quat_to_mat(obj_quat[k])

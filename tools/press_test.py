@@ -85,7 +85,7 @@ class PressTest(sim.Sim):
             n = self.nail_state()
             lift = self.state_0.joint_q.numpy()[self.table_q] * 1e3
             print(
-                f"t={t:4.2f}s 台={lift:5.2f}mm (接触まで {GAP_MM}) "
+                f"t={t:4.2f}s 台={lift:5.2f}mm "
                 f"push1={n['f1_z']:+.2f} push2={n['f2_z']:+.2f}mm "
                 f"x1={n['f1_x']:+.2f} y1={n['f1_y']:+.2f} x2={n['f2_x']:+.2f} y2={n['f2_y']:+.2f}deg"
             )

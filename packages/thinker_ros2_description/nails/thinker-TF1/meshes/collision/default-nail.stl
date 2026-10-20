@@ -2,14 +2,14 @@ solid box
 facet normal 0 0 0
 outer loop
 vertex -0.005 -0.004 0
-vertex -0.005 -0.004 0.012
-vertex -0.005 0.004 0.012
+vertex -0.003 0.0138 0.034
+vertex -0.003 0.0168 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex -0.005 -0.004 0
-vertex -0.005 0.004 0.012
+vertex -0.003 0.0168 0.034
 vertex -0.005 0.004 0
 endloop
 endfacet
@@ -17,41 +17,41 @@ facet normal 0 0 0
 outer loop
 vertex 0.005 -0.004 0
 vertex 0.005 0.004 0
-vertex 0.005 0.004 0.012
+vertex 0.003 0.0168 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex 0.005 -0.004 0
-vertex 0.005 0.004 0.012
-vertex 0.005 -0.004 0.012
+vertex 0.003 0.0168 0.034
+vertex 0.003 0.0138 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex -0.005 -0.004 0
 vertex 0.005 -0.004 0
-vertex 0.005 -0.004 0.012
+vertex 0.003 0.0138 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex -0.005 -0.004 0
-vertex 0.005 -0.004 0.012
-vertex -0.005 -0.004 0.012
+vertex 0.003 0.0138 0.034
+vertex -0.003 0.0138 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex -0.005 0.004 0
-vertex -0.005 0.004 0.012
-vertex 0.005 0.004 0.012
+vertex -0.003 0.0168 0.034
+vertex 0.003 0.0168 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
 vertex -0.005 0.004 0
-vertex 0.005 0.004 0.012
+vertex 0.003 0.0168 0.034
 vertex 0.005 0.004 0
 endloop
 endfacet
@@ -71,16 +71,16 @@ endloop
 endfacet
 facet normal 0 0 0
 outer loop
-vertex -0.005 -0.004 0.012
-vertex 0.005 -0.004 0.012
-vertex 0.005 0.004 0.012
+vertex -0.003 0.0138 0.034
+vertex 0.003 0.0138 0.034
+vertex 0.003 0.0168 0.034
 endloop
 endfacet
 facet normal 0 0 0
 outer loop
-vertex -0.005 -0.004 0.012
-vertex 0.005 0.004 0.012
-vertex -0.005 0.004 0.012
+vertex -0.003 0.0138 0.034
+vertex 0.003 0.0168 0.034
+vertex -0.003 0.0168 0.034
 endloop
 endfacet
 endsolid box

@@ -10,14 +10,35 @@ parts = {
     "fingers/thinker-TF1/meshes/visual/x.stl": ((0.012, 0.012, 0.012), (0, 0, 0)),
     "fingers/thinker-TF1/meshes/visual/y.stl": ((0.012, 0.012, 0.012), (0, 0, 0)),
     "fingers/thinker-TF1/meshes/visual/z.stl": ((0.008, 0.008, 0.0276), (0, 0, 0.0138)),
-    "nails/thinker-TF1/meshes/visual/default-nail.stl": ((0.01, 0.008, 0.012), (0, 0, 0.006)),
-    "nails/thinker-TF1/meshes/collision/default-nail.stl": ((0.01, 0.008, 0.012), (0, 0, 0.006)),
     "grippers/robotiq-hande/meshes/visual/finger-slider.stl": ((0.01, 0.02, 0.04), (0, 0, 0.02)),
 }
+
+# 爪は根元 (z=0) から URDF の tip_link (0, 0.0153, 0.034) へ斜めに細くなる柱。
+# name -> ((根元 size xy, 中心 xy), (先端 size xy, 中心 xy), 長さ z)
+nails = {
+    "nails/thinker-TF1/meshes/visual/default-nail.stl": (((0.01, 0.008), (0, 0)), ((0.006, 0.003), (0, 0.0153)), 0.034),
+    "nails/thinker-TF1/meshes/collision/default-nail.stl": (((0.01, 0.008), (0, 0)), ((0.006, 0.003), (0, 0.0153)), 0.034),
+}
+
 
 def box(size, c):
     sx, sy, sz = (s / 2 for s in size)
     v = [(c[0] + x * sx, c[1] + y * sy, c[2] + z * sz) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+    return stl(v)
+
+
+def prism(bottom, top, length):
+    """z=0 の矩形 bottom と z=length の矩形 top を結ぶ六面体。"""
+    (bs, bc), (ts, tc) = bottom, top
+    v = []
+    for x in (-1, 1):
+        for y in (-1, 1):
+            for z, (s, c) in ((0.0, (bs, bc)), (length, (ts, tc))):
+                v.append((c[0] + x * s[0] / 2, c[1] + y * s[1] / 2, z))
+    return stl(v)
+
+
+def stl(v):
     quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
     out = ["solid box"]
     for a, b, c_, d in quads:
@@ -32,4 +53,10 @@ for rel, (size, center) in parts.items():
     p = root / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(box(size, center))
+    print(p)
+
+for rel, (bottom, top, length) in nails.items():
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(prism(bottom, top, length))
     print(p)

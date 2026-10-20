@@ -14,13 +14,16 @@ import warp as wp
 
 import newton
 from newton import JointTargetMode
+from newton._src.solvers.mujoco.constants import SOLREF_MODE_FORCE_SPACE
 
 NAIL_PUSH_MAX_MM = 3.9  # 最大押し込み量。z_joint の値そのまま 0〜3.9mm
 
 # ネイルは目標 0 のバネ (受動) として扱い、変位が接触力を反映する触覚センサになるようにする。
 # 剛性・減衰は仮の値 (実機の値が分かれば差し替える)
-NAIL_ROT_KE = 1.0  # x,y 関節 [N*m/rad]
-NAIL_ROT_KD = 0.01
+# x,y 関節 [N*m/rad]。爪先は回転軸から 15mm ほど中央側にずれているので、柔らかいと上から押したとき
+# 爪が回って逃げ、押し込み (z) に力が乗らない。1.0 では逃げたので 10 にした
+NAIL_ROT_KE = 10.0
+NAIL_ROT_KD = 0.1
 # z 関節 [N/m]。全押し込み 3.9mm で約 7.8N。
 # 2000 N/m (= 2.0 N/mm) は think_hand_f_transient_sim/sim_main.py の SPRING_K_LEFT/RIGHT に合わせた
 NAIL_Z_KE = 2000.0
@@ -32,6 +35,11 @@ NAIL_Z_KD = 5.0
 BOX_SIZE = 0.05  # 一辺 [m]
 BOX_MASS = 0.1  # [kg]
 BOX_POS = (0.4607, 0.405, 0.0665)  # 爪の x 中点、爪先の y、グリッパの z
+# 接触の剛性・減衰 [N/m], [N*s/m]。Newton の force-space 指定 (質量に依存しない)。
+# MuJoCo 既定の接触は剛さが加速度の単位で決まり、軽い爪 (10-30g) では数百 N/m 相当と柔らかく、
+# 爪のバネ (2000 N/m) より柔らかいため変位の大半がめり込みに回っていた
+CONTACT_KE = 5e4
+CONTACT_KD = 200.0
 HANDE_STROKE = 0.025  # Hande の片指ストローク [m]。関節値 0 が閉、0.025 が全開
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -68,11 +76,16 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
 
 
 class Sim:
+    # アームの初期姿勢・目標 [deg] (shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3)。None なら全関節 0
+    ARM_Q_DEG = None
+    CAMERA_TARGET = BOX_POS
+
     def __init__(self, viewer, args):
         self.viewer = viewer
+        self.args = args
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
-        self.substeps = 10
+        self.substeps = 20  # 接触を硬くしたので細かく (MuJoCo は時定数を 2*dt 未満にできない)
         self.sim_dt = self.frame_dt / self.substeps
         self.sim_time = 0.0
 
@@ -97,16 +110,16 @@ class Sim:
                 rot = m.group(1) != "z"
                 builder.joint_target_ke[d] = NAIL_ROT_KE if rot else NAIL_Z_KE
                 builder.joint_target_kd[d] = NAIL_ROT_KD if rot else NAIL_Z_KD
+        self.arm_q_index = [
+            builder.joint_q_start[j]
+            for j, label in enumerate(builder.joint_label)
+            if "thinker_arm_" in label and builder.joint_type[j] != int(newton.JointType.FIXED)
+        ]
+        if self.ARM_Q_DEG is not None:
+            for k, deg in zip(self.arm_q_index, self.ARM_Q_DEG):
+                builder.joint_q[k] = np.radians(deg)
         builder.add_ground_plane()
-        if args.box:
-            h = BOX_SIZE / 2
-            # 箱の下に静止した台を置く (持ち上げは手順の後)
-            builder.add_shape_box(
-                -1, xform=wp.transform(wp.vec3(BOX_POS[0], BOX_POS[1], BOX_POS[2] - h - 0.01), wp.quat_identity()), hx=0.1, hy=0.1, hz=0.01
-            )
-            box = builder.add_body(xform=wp.transform(wp.vec3(*BOX_POS), wp.quat_identity()), label="box")
-            cfg = newton.ModelBuilder.ShapeConfig(density=BOX_MASS / BOX_SIZE**3, mu=1.0)
-            builder.add_shape_box(box, hx=h, hy=h, hz=h, cfg=cfg)
+        self.add_scene(builder)
 
         self.model = builder.finalize()
         # ネイル関節 (f1/f2 の x,y,z) の q / dof インデックス。全て 1 自由度なので同じ並び
@@ -124,10 +137,20 @@ class Sim:
         self.gripper_q, self.gripper_dof = int(q_start[gj]), int(qd_start[gj])
         self.box_body = next((i for i, l in enumerate(self.model.body_label) if l.endswith("box")), None)
 
-        self.solver = newton.solvers.SolverMuJoCo(self.model, njmax=512, nconmax=256)
+        self.model.mujoco.solref_mode.fill_(SOLREF_MODE_FORCE_SPACE)
+        self.model.shape_material_ke.fill_(CONTACT_KE)
+        self.model.shape_material_kd.fill_(CONTACT_KD)
+        # force-space の接触剛性は Newton の接触 (model.collide) を使うときだけ効く
+        self.solver = newton.solvers.SolverMuJoCo(self.model, use_mujoco_contacts=False, njmax=512, nconmax=256)
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
+        # アームは初期姿勢を目標にして保持する (q と qd の並びはアームでは同じ)
+        tgt = self.control.joint_target_q.numpy()
+        q = self.model.joint_q.numpy()
+        for k in self.arm_q_index:
+            tgt[k] = q[k]
+        self.control.joint_target_q.assign(tgt)
         self.contacts = self.model.contacts()
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
 
@@ -137,9 +160,21 @@ class Sim:
         self.viewer.set_model(self.model)
         self.look_at_nails()
 
+    def add_scene(self, builder):
+        """ロボット以外の物体を置く。サブクラスで差し替える。"""
+        if self.args.box:
+            h = BOX_SIZE / 2
+            # 箱の下に静止した台を置く (持ち上げは手順の後)
+            builder.add_shape_box(
+                -1, xform=wp.transform(wp.vec3(BOX_POS[0], BOX_POS[1], BOX_POS[2] - h - 0.01), wp.quat_identity()), hx=0.1, hy=0.1, hz=0.01
+            )
+            box = builder.add_body(xform=wp.transform(wp.vec3(*BOX_POS), wp.quat_identity()), label="box")
+            cfg = newton.ModelBuilder.ShapeConfig(density=BOX_MASS / BOX_SIZE**3, mu=1.0)
+            builder.add_shape_box(box, hx=h, hy=h, hz=h, cfg=cfg)
+
     def look_at_nails(self, dist=0.12, elevation_deg=25.0, azimuth_deg=60.0):
-        """カメラを爪先 (箱の位置) に向ける。azimuth は +y (グリッパの先端側) から x 方向へ振る角度。"""
-        target = np.array(BOX_POS)
+        """カメラを爪先 (CAMERA_TARGET) に向ける。azimuth は +y から x 方向へ振る角度。"""
+        target = np.array(self.CAMERA_TARGET)
         az, el = np.radians(azimuth_deg), np.radians(elevation_deg)
         offset = dist * np.array([np.sin(az) * np.cos(el), np.cos(az) * np.cos(el), np.sin(el)])
         pos = target + offset

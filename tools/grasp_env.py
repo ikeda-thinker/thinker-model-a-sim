@@ -70,7 +70,9 @@ def wrap_quarter(a):
 class ArmIK:
     """ロボット単体のモデルで、爪先中点 (TCP) の位置と yaw から関節角を解く。"""
 
-    def __init__(self, urdf, q_seed):
+    def __init__(self, urdf, q_seed, n=1):
+        """n は同時に解く問題数 (solve_batch 用)。"""
+        self.n = n
         builder = sim.build_robot(urdf)
         self.model = builder.finalize()
         labels = list(self.model.body_label)
@@ -89,23 +91,45 @@ class ArmIK:
         self.q_seed = q
 
         self.pos_obj = ik.IKObjectivePosition(
-            link_index=tool, link_offset=offset, target_positions=wp.array([wp.vec3(*tip_mid)], dtype=wp.vec3)
+            link_index=tool, link_offset=offset, target_positions=wp.array([wp.vec3(*tip_mid)] * n, dtype=wp.vec3)
         )
         self.rot_obj = ik.IKObjectiveRotation(
             link_index=tool,
             link_offset_rotation=wp.quat_identity(),
-            target_rotations=wp.array([wp.vec4(*self.down)], dtype=wp.vec4),
+            target_rotations=wp.array([wp.vec4(*self.down)] * n, dtype=wp.vec4),
         )
         limits = ik.IKObjectiveJointLimit(
             joint_limit_lower=self.model.joint_limit_lower, joint_limit_upper=self.model.joint_limit_upper, weight=10.0
         )
         self.solver = ik.IKSolver(
             model=self.model,
-            n_problems=1,
+            n_problems=n,
             objectives=[self.pos_obj, self.rot_obj, limits],
             lambda_initial=0.1,
             jacobian_mode=ik.IKJacobianType.ANALYTIC,
         )
+
+    def solve_batch(self, tip_pos, yaw, q_init=None, iters=48):
+        """solve の n 問題版。tip_pos は [n, 3]、yaw は [n]、q_init は [n, 6]。戻り値は [n, 6]。"""
+        tip_pos = np.asarray(tip_pos, dtype=np.float32).reshape(self.n, 3)
+        h = np.asarray(yaw, dtype=np.float64).reshape(self.n) / 2
+        # yaw 回転 (z 軸まわり) と基準姿勢の積 (xyzw)
+        d = np.array(self.down, dtype=np.float64)
+        qy = np.stack([np.zeros(self.n), np.zeros(self.n), np.sin(h), np.cos(h)], axis=1)
+        x1, y1, z1, w1 = qy.T
+        x2, y2, z2, w2 = d
+        rot = np.stack(
+            [w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2, w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+             w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2, w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2], axis=1
+        ).astype(np.float32)
+        self.pos_obj.target_positions.assign(tip_pos)
+        self.rot_obj.target_rotations.assign(rot)
+        q0 = np.tile(self.q_seed, (self.n, 1))
+        if q_init is not None:
+            q0[:, :6] = q_init
+        q = wp.array(q0, dtype=float)
+        self.solver.step(q, q, iterations=iters)
+        return q.numpy()[:, :6].copy()
 
     def solve(self, tip_pos, yaw, q_init=None, iters=48):
         """爪先中点を tip_pos、手先の yaw を基準姿勢から yaw [rad] 回した姿勢にする関節角 (アーム 6 軸) を返す。"""

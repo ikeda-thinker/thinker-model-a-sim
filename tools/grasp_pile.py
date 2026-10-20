@@ -17,9 +17,9 @@ import newton.examples
 import grasp_env as ge
 import sim
 
-N_OBJ = 30
+N_OBJ = 15
 BIN_CENTER = ge.OBJ_XY  # ビンの中心 (基準姿勢の爪先の真下)
-BIN_HALF = 0.07  # 内側の半寸法 [m]
+BIN_HALF = 0.055  # 内側の半寸法 [m]
 WALL_T = 0.004  # 壁の半厚 [m]
 WALL_H = 0.04  # 壁の高さ [m]
 DROP_GRID = 4  # 落とす位置の格子 (DROP_GRID x DROP_GRID)
@@ -61,8 +61,40 @@ def random_quat(rng):
     return q / np.linalg.norm(q)
 
 
+def select_target(obj_pos, obj_quat, obj_names, rng):
+    """静止した山から対象を 1 個選び、ノイズ付きの推定姿勢などを返す。obj_pos は [n, 3]、obj_quat は [n, 4] (xyzw)。
+
+    山の上の方から選ぶ (ビン中心に近いものの中で一番高いもの)。
+    """
+    near = np.hypot(obj_pos[:, 0] - BIN_CENTER[0], obj_pos[:, 1] - BIN_CENTER[1]) < TARGET_RADIUS
+    inside = obj_pos[:, 2] < WALL_H + 0.05
+    cand = np.nonzero(near & inside)[0]
+    if len(cand) == 0:
+        cand = np.argsort(np.hypot(obj_pos[:, 0] - BIN_CENTER[0], obj_pos[:, 1] - BIN_CENTER[1]))[:1]
+    k = int(cand[np.argmax(obj_pos[cand, 2])])
+    name = obj_names[k]
+    spec = SHAPES[name]
+    rot = quat_to_mat(obj_quat[k])
+    pos = np.asarray(obj_pos[k], dtype=float)
+    # 向きから上面までの高さを見積もる (OBB の鉛直方向の半寸法)
+    half_h = float(np.abs(rot[2]) @ np.array(spec["extents"]))
+    # 長軸の水平方向の角度。爪の並びを長軸に合わせると、長軸に直交する向きに閉じる
+    yaw_valid, phi = 0.0, 0.0
+    if spec["axis"] is not None:
+        axis = rot @ np.array(spec["axis"], dtype=float)
+        if np.hypot(axis[0], axis[1]) > 0.4:  # ほぼ立っているものは向きに意味がない
+            phi = float(np.arctan2(axis[1], axis[0]))
+            yaw_valid = 1.0
+    est_yaw = phi + rng.normal(0.0, ge.EST_YAW_STD) if yaw_valid else 0.0
+    return dict(
+        k=k, type=name, pos=pos, z0=float(pos[2]), half_h=half_h, yaw=phi, yaw_valid=yaw_valid,
+        est_pos=pos + rng.normal(0.0, ge.EST_POS_STD, 3), est_yaw=est_yaw,
+        grasp_yaw=ge.wrap_period(est_yaw, np.pi) if yaw_valid else 0.0,
+    )
+
+
 class PileEnv(ge.GraspEnv):
-    NJMAX, NCONMAX = 16384, 4096  # 山が静止するまでに接触が約 1400 点出る
+    NJMAX, NCONMAX = 3000, 600  # 1 環境ぶん。静止した山で約 150 点、落下中のピークでもこの程度
     CAMERA_TARGET = (*BIN_CENTER, 0.02)
     yaw_period = np.pi  # 長軸は 180 度対称
 
@@ -119,37 +151,15 @@ class PileEnv(ge.GraspEnv):
         for _ in range(SETTLE_FRAMES):
             sim.Sim.step(self)
 
-        # 山の上の方から 1 個を選ぶ (ビン中心に近いものの中で一番高いもの)
-        bq = self.state_0.body_q.numpy()
-        pos = bq[self.obj_bodies][:, :3]
-        near = np.hypot(pos[:, 0] - BIN_CENTER[0], pos[:, 1] - BIN_CENTER[1]) < TARGET_RADIUS
-        inside = pos[:, 2] < WALL_H + 0.05
-        cand = np.nonzero(near & inside)[0]
-        if len(cand) == 0:
-            cand = np.argsort(np.hypot(pos[:, 0] - BIN_CENTER[0], pos[:, 1] - BIN_CENTER[1]))[:1]
-        k = int(cand[np.argmax(pos[cand, 2])])
-        self.target = k
-        self.target_type = self.obj_names[k]
-        self.box_body = self.obj_bodies[k]
-        spec = SHAPES[self.target_type]
-        rot = quat_to_mat(bq[self.box_body][3:7])
-
-        self.obj_xy = pos[k, :2].copy()
-        self.est_pos = pos[k] + rng.normal(0.0, ge.EST_POS_STD, 3)
-        self.obj_z0 = float(pos[k, 2])
-        # 向きから上面までの高さを見積もる (OBB の鉛直方向の半寸法)
-        self.obj_half_h = float(np.abs(rot[2]) @ np.array(spec["extents"]))
-        # 長軸の水平方向の角度。爪の並びを長軸に合わせると、長軸に直交する向きに閉じる
-        self.yaw_valid = 0.0
-        phi = 0.0
-        if spec["axis"] is not None:
-            axis = rot @ np.array(spec["axis"], dtype=float)
-            if np.hypot(axis[0], axis[1]) > 0.4:  # ほぼ立っているものは向きに意味がない
-                phi = float(np.arctan2(axis[1], axis[0]))
-                self.yaw_valid = 1.0
-        self.obj_yaw = phi
-        self.est_yaw = phi + rng.normal(0.0, ge.EST_YAW_STD) if self.yaw_valid else 0.0
-        self.grasp_yaw = ge.wrap_period(self.est_yaw, np.pi) if self.yaw_valid else 0.0
+        bq = self.state_0.body_q.numpy()[self.obj_bodies]
+        t = select_target(bq[:, :3], bq[:, 3:7], self.obj_names, rng)
+        self.target = t["k"]
+        self.target_type = t["type"]
+        self.box_body = self.obj_bodies[t["k"]]
+        self.obj_xy = t["pos"][:2].copy()
+        self.est_pos, self.est_yaw, self.grasp_yaw = t["est_pos"], t["est_yaw"], t["grasp_yaw"]
+        self.obj_z0, self.obj_half_h = t["z0"], t["half_h"]
+        self.obj_yaw, self.yaw_valid = t["yaw"], t["yaw_valid"]
 
 
 class PileDemo(ge.Demo):

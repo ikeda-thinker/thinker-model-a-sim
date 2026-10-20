@@ -82,6 +82,7 @@ class Sim:
     # アームの初期姿勢・目標 [deg] (shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3)。None なら全関節 0
     ARM_Q_DEG = None
     use_graph = True
+    SOLVER_KW = {}  # SolverMuJoCo への追加引数 (iterations など)
     NJMAX, NCONMAX = 512, 256  # MuJoCo の拘束・接触バッファ。物体が多いときはサブクラスで増やす
     CAMERA_TARGET = BOX_POS
 
@@ -125,6 +126,14 @@ class Sim:
                 builder.joint_q[k] = np.radians(deg)
         builder.add_ground_plane()
         self.add_scene(builder)
+        # 環境数 (--num-envs)。1 環境ぶんを組んだ builder を複製して、独立したワールドにする。
+        # 以降のインデックス (nail_q_index など) はワールド 0 のもの。ワールド w のぶんは w * (1 ワールドの q 数 / dof 数 / body 数) を足す
+        self.num_envs = int(getattr(args, "num_envs", 1))
+        if self.num_envs > 1:
+            multi = newton.ModelBuilder()
+            newton.solvers.SolverMuJoCo.register_custom_attributes(multi)
+            multi.replicate(builder, self.num_envs)
+            builder = multi
 
         self.model = builder.finalize()
         # ネイル関節 (f1/f2 の x,y,z) の q / dof インデックス。全て 1 自由度なので同じ並び
@@ -149,7 +158,9 @@ class Sim:
         self.model.shape_material_kd.fill_(CONTACT_KD)
         self.model.shape_gap.fill_(CONTACT_GAP)
         # force-space の接触剛性は Newton の接触 (model.collide) を使うときだけ効く
-        self.solver = newton.solvers.SolverMuJoCo(self.model, use_mujoco_contacts=False, njmax=self.NJMAX, nconmax=self.NCONMAX)
+        self.solver = newton.solvers.SolverMuJoCo(
+            self.model, use_mujoco_contacts=False, njmax=self.NJMAX, nconmax=self.NCONMAX, **self.SOLVER_KW
+        )
         # Hande の左右の指は URDF の mimic で連動させている。MuJoCo の等式拘束の既定 (時定数 0.02 s) だと柔らかすぎて、
         # 把持物を持ち上げる加速で左右差が ±14mm まで揺れた。固くすると ±1.6mm
         eq_solref = self.solver.mjw_model.eq_solref.numpy()

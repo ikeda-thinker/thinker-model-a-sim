@@ -1,16 +1,16 @@
 """手順1: 箱を置いて Hande を閉じ、爪の変位と箱の位置を表示する。
 
-    uv run tools/grasp_test.py --viewer null      # 数値だけ
-    uv run tools/grasp_test.py --viewer viser     # ブラウザで見る (http://localhost:8080)
+    uv run scripts/check_grasp.py --viewer null      # 数値だけ
+    uv run scripts/check_grasp.py --viewer viser     # ブラウザで見る (http://localhost:8080)
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import newton
 import newton.examples
-import sim
+from tma import sim
 
 OPEN_MM = 25.0
 CLOSE_MM = 0.0
@@ -42,7 +42,7 @@ class GraspTest(sim.Sim):
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--box", action="store_true", default=True)
     parser.set_defaults(num_frames=OPEN_STEPS + CLOSE_STEPS)
     viewer, args = newton.examples.init(parser)

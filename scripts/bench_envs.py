@@ -1,6 +1,6 @@
 """VecGraspEnv の環境数ごとの速度と GPU メモリを測る (ランダム行動で数十ステップ。リセットの頻度が高い最悪側の条件)。
 
-    uv run tools/bench_envs.py --viewer null --num-envs 256
+    uv run scripts/bench_envs.py --viewer null --num-envs 256
 """
 import json
 import subprocess
@@ -8,17 +8,17 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton.examples
-import grasp_vec as gv
+from tma.envs import grasp_pile_vec as gv
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--num-envs", type=int, default=64)
     parser.add_argument("--steps", type=int, default=60)
     parser.set_defaults(num_frames=10**9)

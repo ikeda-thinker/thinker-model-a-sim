@@ -3,21 +3,21 @@
 TMA の主用途 (上からバラ積みの小物にアプローチ) を想定した確認。アームを IK で下ろす代わりに、
 台を z 方向の直動関節に載せて持ち上げる (爪から見た相対運動は同じ)。
 
-    uv run tools/press_test.py --viewer null              # 平らな台
-    uv run tools/press_test.py --viewer null --tilt-deg 3 # 台を傾けて片当たりさせる
-    uv run tools/press_test.py --viewer viser             # ブラウザで見る (http://localhost:8080)
+    uv run scripts/check_press.py --viewer null              # 平らな台
+    uv run scripts/check_press.py --viewer null --tilt-deg 3 # 台を傾けて片当たりさせる
+    uv run scripts/check_press.py --viewer viser             # ブラウザで見る (http://localhost:8080)
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton
 import newton.examples
-import sim
+from tma import sim
 
 # UR の定番の下向き姿勢。グリッパ先端が -z、2 本の爪は y 方向に並ぶ (FK で確認)
 ARM_Q_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)
@@ -93,7 +93,7 @@ class PressTest(sim.Sim):
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--tilt-deg", type=float, default=0.0, help="台を x 軸まわりに傾ける (爪の並び方向に傾斜)")
     parser.set_defaults(num_frames=int((SETTLE_S + RISE_MM / RISE_SPEED + 0.5) * 60))
     viewer, args = newton.examples.init(parser)

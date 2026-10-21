@@ -1,8 +1,8 @@
-"""Run thinker-TMA-F1-REFX4-U3.urdf in Newton Physics.
+"""Run tma.urdf in Newton Physics.
 
-    uv run tools/sim.py                 # OpenGL viewer
-    uv run tools/sim.py --viewer viser  # browser viewer (http://localhost:8080)
-    uv run tools/sim.py --viewer null --steps 500   # headless smoke test
+    uv run tma/sim.py                 # OpenGL viewer
+    uv run tma/sim.py --viewer viser  # browser viewer (http://localhost:8080)
+    uv run tma/sim.py --viewer null --num-frames 500   # headless smoke test
 """
 import argparse
 import re
@@ -90,7 +90,7 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
             robot.shape_color[s] = (0.6, 0.6, 0.6)
     # 自己衝突は切っているが、左右の爪同士だけは当てる (実機では全閉の手前で爪先がぶつかる)
     nail = {
-        f: {s for s, b in enumerate(robot.shape_body) if b >= 0 and robot.body_label[b].endswith(f"{f}_thinker_TF1_nail_link")}
+        f: {s for s, b in enumerate(robot.shape_body) if b >= 0 and robot.body_label[b].endswith(f"{f}_thf_nail_link")}
         for f in ("left", "right")
     }
     robot.shape_collision_filter_pairs = [
@@ -137,7 +137,7 @@ class Sim:
                 arm = "thinker_arm_" in label
                 builder.joint_target_ke[d] = 20000.0 if arm else 2000.0
                 builder.joint_target_kd[d] = 2000.0 if arm else 100.0
-            m = re.search(r"f[12]_thinker_TF1_([xyz])_joint$", label)
+            m = re.search(r"(?:left|right)_thf_([xyz])_joint$", label)
             if m:
                 d = builder.joint_qd_start[j]
                 rot = m.group(1) != "z"
@@ -170,7 +170,7 @@ class Sim:
         self.nail_q_index, self.nail_dof_index = {}, {}
         for f in ("left", "right"):
             for a in ("x", "y", "z"):
-                j = next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_{a}_joint"))
+                j = next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thf_{a}_joint"))
                 self.nail_q_index[f"{f}_{a}"] = int(q_start[j])
                 self.nail_dof_index[f"{f}_{a}"] = int(qd_start[j])
 
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     import newton.examples
 
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--box", action=argparse.BooleanOptionalAction, default=True, help="把持対象の箱を置く")
     viewer, args = newton.examples.init(parser)
     newton.examples.run(Sim(viewer, args), args)

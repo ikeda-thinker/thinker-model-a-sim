@@ -15,3 +15,5 @@ packages/robotiq_hande_description/
 
 # 学習のチェックポイント
 ckpt/
+
+imgui.ini

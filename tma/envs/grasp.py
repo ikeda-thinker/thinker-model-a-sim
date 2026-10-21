@@ -6,14 +6,14 @@
 - 観測: アーム q, dq、開度、ネイル 6 値の履歴、q - q_pre、ワークの推定位置 (爪先基準) と推定 yaw のずれ
 - 報酬: 接近 + ネイルの反応 + 持ち上げ高さ + 成功ボーナス - 行動の変化量
 
-    uv run tools/grasp_env.py --viewer null              # スクリプト方策で 1 エピソード (持ち上げ判定の確認)
-    uv run tools/grasp_env.py --viewer null --episodes 5 # 位置・yaw を変えて繰り返す
-    uv run tools/grasp_env.py --viewer viser             # ブラウザで見る (http://localhost:8080)
+    uv run tma/envs/grasp.py --viewer null              # スクリプト方策で 1 エピソード (持ち上げ判定の確認)
+    uv run tma/envs/grasp.py --viewer null --episodes 5 # 位置・yaw を変えて繰り返す
+    uv run tma/envs/grasp.py --viewer viser             # ブラウザで見る (http://localhost:8080)
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
@@ -21,9 +21,9 @@ import warp as wp
 import newton
 import newton.examples
 import newton.ik as ik
-import sim
+from tma import sim
 
-ARM_Q_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)  # 下向きの基準姿勢 (press_test と同じ)
+ARM_Q_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)  # 下向きの基準姿勢 (check_press と同じ)
 # 行動で動かすアーム関節 (shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_3)。
 # wrist_1 を固定すると上下動で手先が傾いて横にずれるので外せない
 ACT_JOINTS = (0, 1, 2, 3, 5)
@@ -83,7 +83,7 @@ class ArmIK:
         self.model = builder.finalize()
         labels = list(self.model.body_label)
         tool = next(i for i, l in enumerate(labels) if l.endswith("thinker_THF1_tool_link"))
-        tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
+        tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thf_tip_link")) for f in ("left", "right")]
         q = self.model.joint_q.numpy()
         q[: len(q_seed)] = q_seed
         state = self.model.state()
@@ -164,7 +164,7 @@ class GraspEnv(sim.Sim):
         self.arm_q = np.array(self.arm_q_index)  # アームは q と dof の並びが同じ
         self.ik = ArmIK(args.urdf, np.radians(ARM_Q_DEG))
         labels = list(self.model.body_label)
-        self.tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
+        self.tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thf_tip_link")) for f in ("left", "right")]
         self.init_objects()
         self.reset()
 
@@ -399,7 +399,7 @@ class Demo:
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.set_defaults(num_frames=10**9)

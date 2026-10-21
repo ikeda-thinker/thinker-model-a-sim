@@ -1,29 +1,29 @@
 """ばら積み把持環境の並列版 (num_envs 個のワールドを 1 つのモデルに入れて GPU で同時に回す)。
 
 物理 (衝突・ソルバ) は GPU で一括、観測・報酬・リセットは numpy で全環境まとめて計算する。
-単一環境版 (grasp_env.GraspEnv / grasp_pile.PileEnv) と観測・行動・報酬は同じ。
+単一環境版 (grasp.GraspEnv / grasp_pile.PileEnv) と観測・行動・報酬は同じ。
 
 - 山は起動時に全ワールドで同時に落として静止させ、ライブラリとして溜める。リセットはそこから引いて、
   アームを q_pre (バッチ IK) に置くだけなので、リセット時に物理を回さない
 - done になった環境は step() の中で自動リセットされ、戻り値の obs は次のエピソードの最初の観測
 
-    uv run tools/grasp_vec.py --viewer null --num-envs 64 --episodes 200   # スクリプト方策で動作確認
-    uv run tools/grasp_vec.py --num-envs 4 --print-every 5                 # 爪の状態をコンソールと GL のパネル・グラフに表示
+    uv run tma/envs/grasp_pile_vec.py --viewer null --num-envs 64 --episodes 200   # スクリプト方策で動作確認
+    uv run tma/envs/grasp_pile_vec.py --num-envs 4 --print-every 5                 # 爪の状態をコンソールと GL のパネル・グラフに表示
 """
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton
 import newton.examples
-import grasp_env as ge
-import grasp_pile as gp
-import sim
+from tma.envs import grasp as ge
+from tma.envs import grasp_pile as gp
+from tma import sim
 
 
 class VecGraspEnv(sim.Sim):
@@ -108,7 +108,7 @@ class VecGraspEnv(sim.Sim):
 
     def tips_of_world0(self):
         labels = list(self.model.body_label)
-        return [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
+        return [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thf_tip_link")) for f in ("left", "right")]
 
     # ---- 状態の読み書き ----
     def read(self):
@@ -350,7 +350,7 @@ class VecGraspEnv(sim.Sim):
         for f in range(2):
             x, y, z = d["nail"][w, 3 * f : 3 * f + 3]
             imgui.separator()
-            imgui.text(f"f{f + 1} nail   {'TOUCH' if d['touching'][w, f] else '-'}")
+            imgui.text(f"{('left', 'right')[f]} nail   {'TOUCH' if d['touching'][w, f] else '-'}")
             imgui.progress_bar(float(np.clip(z / sim.NAIL_PUSH_MAX_MM, 0, 1)), imgui.ImVec2(-1, 0), f"push {z:.2f} mm")
             for name, v in (("x", x), ("y", y)):  # 傾きは中央が 0、±7deg が端
                 imgui.progress_bar(float(np.clip(0.5 + v / 14.0, 0, 1)), imgui.ImVec2(-1, 0), f"tilt {name} {v:+.2f} deg")
@@ -370,7 +370,7 @@ class VecGraspEnv(sim.Sim):
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--num-envs", type=int, default=64)
     parser.add_argument("--episodes", type=int, default=200, help="終わったエピソードの合計がこの数に達したら止める")
     parser.add_argument("--seed", type=int, default=0)

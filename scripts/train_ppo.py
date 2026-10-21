@@ -1,8 +1,8 @@
 """VecGraspEnv (ばら積み把持) / PegEnv (ピン挿入) を PPO で学習する (自前の最小実装、torch)。
 
-    uv run tools/train_ppo.py --viewer null --num-envs 64 --iters 500
-    uv run tools/train_ppo.py --viewer null --eval ckpt/ppo_latest.pt --episodes 200   # 決定的方策で評価
-    uv run tools/train_ppo.py --task peg --viewer null --num-envs 256 --bc-steps 0 --save-dir ckpt/peg
+    uv run scripts/train_ppo.py --viewer null --num-envs 64 --iters 500
+    uv run scripts/train_ppo.py --viewer null --eval ckpt/ppo_latest.pt --episodes 200   # 決定的方策で評価
+    uv run scripts/train_ppo.py --task peg --viewer null --num-envs 256 --bc-steps 0 --save-dir ckpt/peg
 
 - 観測は実行時平均・分散で正規化、報酬は割引リターンの標準偏差でスケーリング
 - 時間切れ (timeout) は終端扱いにせず、リセット前の最終観測の V でブートストラップする
@@ -11,16 +11,16 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 import newton.examples
-import grasp_env as ge
-import grasp_vec as gv
-import peg_env as pe
+from tma.envs import grasp as ge
+from tma.envs import grasp_pile_vec as gv
+from tma.envs import peg as pe
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -138,7 +138,7 @@ def behavior_clone(net, obs_rms, X, Y, epochs, lr=1e-3, batch=256):
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
     parser.add_argument("--task", choices=("pick", "peg"), default="pick", help="pick: ばら積み把持, peg: ピン挿入")
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--num-envs", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--iters", type=int, default=500)

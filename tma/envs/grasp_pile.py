@@ -1,21 +1,21 @@
 """ばら積み版の把持環境。ビンに小物 (ねじ・ピン・ナット・ワッシャ・球・ブロック・カプセル) を落として山を作り、
 山の上の方から 1 個を対象にする。対象の位置・向きはノイズ付きの推定値として方策に渡す。
 
-    uv run tools/grasp_pile.py --viewer null --episodes 5   # スクリプト方策で把持 (形状別の成功率を表示)
-    uv run tools/grasp_pile.py --viewer viser               # ブラウザで見る (http://localhost:8080)
+    uv run tma/envs/grasp_pile.py --viewer null --episodes 5   # スクリプト方策で把持 (形状別の成功率を表示)
+    uv run tma/envs/grasp_pile.py --viewer viser               # ブラウザで見る (http://localhost:8080)
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton
 import newton.examples
-import grasp_env as ge
-import sim
+from tma.envs import grasp as ge
+from tma import sim
 
 N_OBJ = 15
 BIN_CENTER = ge.OBJ_XY  # ビンの中心 (基準姿勢の爪先の真下)
@@ -195,7 +195,7 @@ class PileDemo(ge.Demo):
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
-    parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
+    parser.add_argument("--urdf", default="tma.urdf")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pos-noise-mm", type=float, default=ge.EST_POS_STD * 1e3, help="推定位置のノイズ (標準偏差) [mm]")

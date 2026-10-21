@@ -453,7 +453,7 @@
   <!-- if principal inertia is less than 1e-7kg*m2, -->
   <!-- gazebo simulator would have ill result.      -->
   <!-- ******************************************** -->
-  <link name="f1_thinker_TF1_nail_mount_link">
+  <link name="left_thinker_TF1_nail_mount_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.001"/>
@@ -464,7 +464,7 @@
       <geometry>
         <box size="0.001 0.001 0.001"/>
       </geometry>
-      <material name="f1_thinker_TF1_nail_mount_link_color">
+      <material name="left_thinker_TF1_nail_mount_link_color">
         <color rgba="0.1 0.1 0.9 1.0"/>
       </material>
     </visual>
@@ -472,7 +472,7 @@
   <!-- ************** -->
   <!-- links of robot -->
   <!-- ************** -->
-  <link name="f1_thinker_TF1_base_link">
+  <link name="left_thinker_TF1_base_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 -0.01 0.064"/>
       <mass value="0.285"/>
@@ -492,7 +492,7 @@
       </geometry>
     </collision>
   </link>
-  <link name="f1_thinker_TF1_x_link">
+  <link name="left_thinker_TF1_x_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.01"/>
@@ -505,7 +505,7 @@
       </geometry>
     </visual>
   </link>
-  <link name="f1_thinker_TF1_y_link">
+  <link name="left_thinker_TF1_y_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.01"/>
@@ -518,7 +518,7 @@
       </geometry>
     </visual>
   </link>
-  <link name="f1_thinker_TF1_z_link">
+  <link name="left_thinker_TF1_z_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0.0096"/>
       <mass value="0.03"/>
@@ -534,22 +534,24 @@
   <!-- ***************** -->
   <!-- fixed link offset -->
   <!-- ***************** -->
-  <joint name="f1_thinker_TF1_base_joint" type="fixed">
+  <joint name="left_thinker_TF1_base_joint" type="fixed">
     <parent link="robotiq_hande_left_finger"/>
-    <child link="f1_thinker_TF1_base_link"/>
-    <origin rpy="0 0 3.141592653589793" xyz="0.018 0 0.0011"/>
+    <child link="left_thinker_TF1_base_link"/>
+    <!-- THF のタブ (中心は base_link の x=0.0039) をアダプタのポケット (底 x=0.015) に入れ、M3 穴 (base_link z=-0.0003) をアダプタの穴 (z=0.0055) に合わせた位置。
+         左右の THF は同じ向き (電装部が同じ側) で、タブが左右対称なのでどちら向きでもアダプタに付く -->
+    <origin rpy="0 0 3.141592653589793" xyz="0.0219 0 0.0058"/>
   </joint>
-  <joint name="f1_thinker_TF1_nail_mount_joint" type="fixed">
-    <parent link="f1_thinker_TF1_z_link"/>
-    <child link="f1_thinker_TF1_nail_mount_link"/>
+  <joint name="left_thinker_TF1_nail_mount_joint" type="fixed">
+    <parent link="left_thinker_TF1_z_link"/>
+    <child link="left_thinker_TF1_nail_mount_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.0276"/>
   </joint>
   <!-- *************** -->
   <!-- joints of robot -->
   <!-- *************** -->
-  <joint name="f1_thinker_TF1_x_joint" type="revolute">
-    <parent link="f1_thinker_TF1_base_link"/>
-    <child link="f1_thinker_TF1_x_link"/>
+  <joint name="left_thinker_TF1_x_joint" type="revolute">
+    <parent link="left_thinker_TF1_base_link"/>
+    <child link="left_thinker_TF1_x_link"/>
     <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0.0373"/>
     <axis xyz="0 0 1"/>
     <limit effort="20.0" lower="-0.12217304763960307" upper="0.12217304763960307" velocity="2.00"/>
@@ -558,9 +560,9 @@
 		                   k_position="22.9" k_velocity="800" / -->
     <dynamics damping="0.001"/>
   </joint>
-  <joint name="f1_thinker_TF1_y_joint" type="revolute">
-    <parent link="f1_thinker_TF1_x_link"/>
-    <child link="f1_thinker_TF1_y_link"/>
+  <joint name="left_thinker_TF1_y_joint" type="revolute">
+    <parent link="left_thinker_TF1_x_link"/>
+    <child link="left_thinker_TF1_y_link"/>
     <origin rpy="0 1.5707963267948966 0" xyz="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="20.0" lower="-0.12217304763960307" upper="0.12217304763960307" velocity="6.28"/>
@@ -569,9 +571,9 @@
 		                   k_position="72.0" k_velocity="800" / -->
     <dynamics damping="0.001"/>
   </joint>
-  <joint name="f1_thinker_TF1_z_joint" type="prismatic">
-    <parent link="f1_thinker_TF1_y_link"/>
-    <child link="f1_thinker_TF1_z_link"/>
+  <joint name="left_thinker_TF1_z_joint" type="prismatic">
+    <parent link="left_thinker_TF1_y_link"/>
+    <child link="left_thinker_TF1_z_link"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 0 0.0039"/>
     <axis xyz="0 0 -1"/>
     <limit effort="1000.0" lower="0.0" upper="0.0039" velocity="10.0"/>
@@ -583,32 +585,32 @@
   <!-- ********************** -->
   <!-- transmissions of robot -->
   <!-- ********************** -->
-  <transmission name="f1_thinker_TF1_x_trans">
+  <transmission name="left_thinker_TF1_x_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f1_thinker_TF1_x_joint">
+    <joint name="left_thinker_TF1_x_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f1_thinker_TF1_x_motor">
+    <actuator name="left_thinker_TF1_x_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
   </transmission>
-  <transmission name="f1_thinker_TF1_y_trans">
+  <transmission name="left_thinker_TF1_y_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f1_thinker_TF1_y_joint">
+    <joint name="left_thinker_TF1_y_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f1_thinker_TF1_y_motor">
+    <actuator name="left_thinker_TF1_y_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
   </transmission>
-  <transmission name="f1_thinker_TF1_z_trans">
+  <transmission name="left_thinker_TF1_z_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f1_thinker_TF1_z_joint">
+    <joint name="left_thinker_TF1_z_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f1_thinker_TF1_z_motor">
+    <actuator name="left_thinker_TF1_z_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
@@ -616,7 +618,7 @@
   <!-- *************************** -->
   <!-- gazebo parameters for robot -->
   <!-- *************************** -->
-  <gazebo reference="f1_thinker_TF1_base_link">
+  <gazebo reference="left_thinker_TF1_base_link">
     <mu1>1</mu1>
     <mu2>1</mu2>
     <kp>1e+6</kp>
@@ -709,7 +711,7 @@
   <!-- if principal inertia is less than 1e-7kg*m2, -->
   <!-- gazebo simulator would have ill result.      -->
   <!-- ******************************************** -->
-  <link name="f2_thinker_TF1_nail_mount_link">
+  <link name="right_thinker_TF1_nail_mount_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.001"/>
@@ -720,7 +722,7 @@
       <geometry>
         <box size="0.001 0.001 0.001"/>
       </geometry>
-      <material name="f2_thinker_TF1_nail_mount_link_color">
+      <material name="right_thinker_TF1_nail_mount_link_color">
         <color rgba="0.1 0.1 0.9 1.0"/>
       </material>
     </visual>
@@ -728,7 +730,7 @@
   <!-- ************** -->
   <!-- links of robot -->
   <!-- ************** -->
-  <link name="f2_thinker_TF1_base_link">
+  <link name="right_thinker_TF1_base_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 -0.01 0.064"/>
       <mass value="0.285"/>
@@ -748,7 +750,7 @@
       </geometry>
     </collision>
   </link>
-  <link name="f2_thinker_TF1_x_link">
+  <link name="right_thinker_TF1_x_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.01"/>
@@ -761,7 +763,7 @@
       </geometry>
     </visual>
   </link>
-  <link name="f2_thinker_TF1_y_link">
+  <link name="right_thinker_TF1_y_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.01"/>
@@ -774,7 +776,7 @@
       </geometry>
     </visual>
   </link>
-  <link name="f2_thinker_TF1_z_link">
+  <link name="right_thinker_TF1_z_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0.0096"/>
       <mass value="0.03"/>
@@ -790,22 +792,23 @@
   <!-- ***************** -->
   <!-- fixed link offset -->
   <!-- ***************** -->
-  <joint name="f2_thinker_TF1_base_joint" type="fixed">
+  <joint name="right_thinker_TF1_base_joint" type="fixed">
     <parent link="robotiq_hande_right_finger"/>
-    <child link="f2_thinker_TF1_base_link"/>
-    <origin rpy="0 0 3.141592653589793" xyz="-0.018 0 0.0011"/>
+    <child link="right_thinker_TF1_base_link"/>
+    <!-- 左と同じくタブをアダプタに合わせた位置。アダプタは 180° 回っているが THF は左と同じ向きなので x は左の符号違いにならない -->
+    <origin rpy="0 0 3.141592653589793" xyz="-0.0141 0 0.0058"/>
   </joint>
-  <joint name="f2_thinker_TF1_nail_mount_joint" type="fixed">
-    <parent link="f2_thinker_TF1_z_link"/>
-    <child link="f2_thinker_TF1_nail_mount_link"/>
+  <joint name="right_thinker_TF1_nail_mount_joint" type="fixed">
+    <parent link="right_thinker_TF1_z_link"/>
+    <child link="right_thinker_TF1_nail_mount_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.0276"/>
   </joint>
   <!-- *************** -->
   <!-- joints of robot -->
   <!-- *************** -->
-  <joint name="f2_thinker_TF1_x_joint" type="revolute">
-    <parent link="f2_thinker_TF1_base_link"/>
-    <child link="f2_thinker_TF1_x_link"/>
+  <joint name="right_thinker_TF1_x_joint" type="revolute">
+    <parent link="right_thinker_TF1_base_link"/>
+    <child link="right_thinker_TF1_x_link"/>
     <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0.0373"/>
     <axis xyz="0 0 1"/>
     <limit effort="20.0" lower="-0.12217304763960307" upper="0.12217304763960307" velocity="2.00"/>
@@ -814,9 +817,9 @@
 		                   k_position="22.9" k_velocity="800" / -->
     <dynamics damping="0.001"/>
   </joint>
-  <joint name="f2_thinker_TF1_y_joint" type="revolute">
-    <parent link="f2_thinker_TF1_x_link"/>
-    <child link="f2_thinker_TF1_y_link"/>
+  <joint name="right_thinker_TF1_y_joint" type="revolute">
+    <parent link="right_thinker_TF1_x_link"/>
+    <child link="right_thinker_TF1_y_link"/>
     <origin rpy="0 1.5707963267948966 0" xyz="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="20.0" lower="-0.12217304763960307" upper="0.12217304763960307" velocity="6.28"/>
@@ -825,9 +828,9 @@
 		                   k_position="72.0" k_velocity="800" / -->
     <dynamics damping="0.001"/>
   </joint>
-  <joint name="f2_thinker_TF1_z_joint" type="prismatic">
-    <parent link="f2_thinker_TF1_y_link"/>
-    <child link="f2_thinker_TF1_z_link"/>
+  <joint name="right_thinker_TF1_z_joint" type="prismatic">
+    <parent link="right_thinker_TF1_y_link"/>
+    <child link="right_thinker_TF1_z_link"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 0 0.0039"/>
     <axis xyz="0 0 -1"/>
     <limit effort="1000.0" lower="0.0" upper="0.0039" velocity="10.0"/>
@@ -839,32 +842,32 @@
   <!-- ********************** -->
   <!-- transmissions of robot -->
   <!-- ********************** -->
-  <transmission name="f2_thinker_TF1_x_trans">
+  <transmission name="right_thinker_TF1_x_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f2_thinker_TF1_x_joint">
+    <joint name="right_thinker_TF1_x_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f2_thinker_TF1_x_motor">
+    <actuator name="right_thinker_TF1_x_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
   </transmission>
-  <transmission name="f2_thinker_TF1_y_trans">
+  <transmission name="right_thinker_TF1_y_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f2_thinker_TF1_y_joint">
+    <joint name="right_thinker_TF1_y_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f2_thinker_TF1_y_motor">
+    <actuator name="right_thinker_TF1_y_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
   </transmission>
-  <transmission name="f2_thinker_TF1_z_trans">
+  <transmission name="right_thinker_TF1_z_trans">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="f2_thinker_TF1_z_joint">
+    <joint name="right_thinker_TF1_z_joint">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="f2_thinker_TF1_z_motor">
+    <actuator name="right_thinker_TF1_z_motor">
       <mechanicalReduction>1</mechanicalReduction>
       <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>
     </actuator>
@@ -872,7 +875,7 @@
   <!-- *************************** -->
   <!-- gazebo parameters for robot -->
   <!-- *************************** -->
-  <gazebo reference="f2_thinker_TF1_base_link">
+  <gazebo reference="right_thinker_TF1_base_link">
     <mu1>1</mu1>
     <mu2>1</mu2>
     <kp>1e+6</kp>
@@ -980,6 +983,19 @@
         <mesh filename="package://thinker_ros2_description/grippers/robotiq-hande/meshes/visual/finger-slider.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
+    <!-- THF を留めるアダプタ (tools/convert_meshes.py で CAD から作成)。溝に指スライダーの凸部がはまり、外側の面のポケットに THF のタブが入る -->
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/hande-adapter.stl"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/hande-adapter.stl"/>
+      </geometry>
+    </collision>
     <!-- *************************************************** -->
     <!-- *************************************************** -->
     <!-- collision>
@@ -1011,6 +1027,19 @@
         <mesh filename="package://thinker_ros2_description/grippers/robotiq-hande/meshes/visual/finger-slider.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
+    <!-- THF を留めるアダプタ (左指と同じ部品を 180° 回して付ける) -->
+    <visual>
+      <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/hande-adapter.stl"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/collision/hande-adapter.stl"/>
+      </geometry>
+    </collision>
     <!-- *************************************************** -->
     <!-- *************************************************** -->
     <!-- collision>
@@ -1057,7 +1086,7 @@
   <!-- if principal inertia is less than 1e-7kg*m2, -->
   <!-- gazebo simulator would have ill result.      -->
   <!-- ******************************************** -->
-  <link name="f1_thinker_TF1_tip_link">
+  <link name="left_thinker_TF1_tip_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.001"/>
@@ -1068,7 +1097,7 @@
       <geometry>
         <box size="0.001 0.001 0.001"/>
       </geometry>
-      <material name="f1_thinker_TF1_tip_link_color">
+      <material name="left_thinker_TF1_tip_link_color">
         <color rgba="0.1 0.1 0.9 1.0"/>
       </material>
     </visual>
@@ -1076,7 +1105,7 @@
   <!-- ************** -->
   <!-- links of robot -->
   <!-- ************** -->
-  <link name="f1_thinker_TF1_nail_link">
+  <link name="left_thinker_TF1_nail_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0.015 0.025"/>
       <mass value="0.01"/>
@@ -1135,14 +1164,14 @@
   <!-- ***************** -->
   <!-- fixed link offset -->
   <!-- ***************** -->
-  <joint name="f1_thinker_TF1_nail_joint" type="fixed">
-    <parent link="f1_thinker_TF1_nail_mount_link"/>
-    <child link="f1_thinker_TF1_nail_link"/>
+  <joint name="left_thinker_TF1_nail_joint" type="fixed">
+    <parent link="left_thinker_TF1_nail_mount_link"/>
+    <child link="left_thinker_TF1_nail_link"/>
     <origin rpy="0 0 0" xyz="0 0.0015 0"/>
   </joint>
-  <joint name="f1_thinker_TF1_tip_joint" type="fixed">
-    <parent link="f1_thinker_TF1_nail_link"/>
-    <child link="f1_thinker_TF1_tip_link"/>
+  <joint name="left_thinker_TF1_tip_joint" type="fixed">
+    <parent link="left_thinker_TF1_nail_link"/>
+    <child link="left_thinker_TF1_tip_link"/>
     <origin rpy="0 0 0.0" xyz="0 0.0238 0.045"/>
   </joint>
   <!-- ******************************** -->
@@ -1156,7 +1185,7 @@
   <!-- if principal inertia is less than 1e-7kg*m2, -->
   <!-- gazebo simulator would have ill result.      -->
   <!-- ******************************************** -->
-  <link name="f2_thinker_TF1_tip_link">
+  <link name="right_thinker_TF1_tip_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.001"/>
@@ -1167,7 +1196,7 @@
       <geometry>
         <box size="0.001 0.001 0.001"/>
       </geometry>
-      <material name="f2_thinker_TF1_tip_link_color">
+      <material name="right_thinker_TF1_tip_link_color">
         <color rgba="0.1 0.1 0.9 1.0"/>
       </material>
     </visual>
@@ -1175,7 +1204,7 @@
   <!-- ************** -->
   <!-- links of robot -->
   <!-- ************** -->
-  <link name="f2_thinker_TF1_nail_link">
+  <link name="right_thinker_TF1_nail_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0.015 0.025"/>
       <mass value="0.01"/>
@@ -1234,14 +1263,14 @@
   <!-- ***************** -->
   <!-- fixed link offset -->
   <!-- ***************** -->
-  <joint name="f2_thinker_TF1_nail_joint" type="fixed">
-    <parent link="f2_thinker_TF1_nail_mount_link"/>
-    <child link="f2_thinker_TF1_nail_link"/>
+  <joint name="right_thinker_TF1_nail_joint" type="fixed">
+    <parent link="right_thinker_TF1_nail_mount_link"/>
+    <child link="right_thinker_TF1_nail_link"/>
     <origin rpy="0 0 3.141592653589793" xyz="0 -0.0015 0"/>
   </joint>
-  <joint name="f2_thinker_TF1_tip_joint" type="fixed">
-    <parent link="f2_thinker_TF1_nail_link"/>
-    <child link="f2_thinker_TF1_tip_link"/>
+  <joint name="right_thinker_TF1_tip_joint" type="fixed">
+    <parent link="right_thinker_TF1_nail_link"/>
+    <child link="right_thinker_TF1_tip_link"/>
     <origin rpy="0 0 -3.141592653589793" xyz="0 0.0238 0.045"/>
   </joint>
   <!-- ***************************** -->

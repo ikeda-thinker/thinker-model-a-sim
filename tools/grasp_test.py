@@ -35,8 +35,8 @@ class GraspTest(sim.Sim):
             print(
                 f"{self.frame:4d} grip={self.gripper_opening_mm():5.1f}mm "
                 f"box=({box[0]:.3f},{box[1]:.3f},{box[2]:.3f}) "
-                f"push1={n['f1_z']:+.2f} push2={n['f2_z']:+.2f}mm (目標 {sim.NAIL_PUSH_REF_MM}) "
-                f"x1={n['f1_x']:+.2f} y1={n['f1_y']:+.2f} x2={n['f2_x']:+.2f} y2={n['f2_y']:+.2f}deg"
+                f"pushL={n['left_z']:+.2f} pushR={n['right_z']:+.2f}mm (目標 {sim.NAIL_PUSH_REF_MM}) "
+                f"xL={n['left_x']:+.2f} yL={n['left_y']:+.2f} xR={n['right_x']:+.2f} yR={n['right_y']:+.2f}deg"
             )
 
 

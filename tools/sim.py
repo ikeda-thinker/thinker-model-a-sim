@@ -87,11 +87,11 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
     # 自己衝突は切っているが、左右の爪同士だけは当てる (実機では全閉の手前で爪先がぶつかる)
     nail = {
         f: {s for s, b in enumerate(robot.shape_body) if b >= 0 and robot.body_label[b].endswith(f"{f}_thinker_TF1_nail_link")}
-        for f in ("f1", "f2")
+        for f in ("left", "right")
     }
     robot.shape_collision_filter_pairs = [
         (a, b) for a, b in robot.shape_collision_filter_pairs
-        if not ((a in nail["f1"] and b in nail["f2"]) or (a in nail["f2"] and b in nail["f1"]))
+        if not ((a in nail["left"] and b in nail["right"]) or (a in nail["right"] and b in nail["left"]))
     ]
     return robot
 
@@ -159,12 +159,12 @@ class Sim:
             builder = multi
 
         self.model = builder.finalize()
-        # ネイル関節 (f1/f2 の x,y,z) の q / dof インデックス。全て 1 自由度なので同じ並び
+        # ネイル関節 (left/right の x,y,z) の q / dof インデックス。全て 1 自由度なので同じ並び
         labels = list(self.model.joint_label)
         q_start = self.model.joint_q_start.numpy()
         qd_start = self.model.joint_qd_start.numpy()
         self.nail_q_index, self.nail_dof_index = {}, {}
-        for f in ("f1", "f2"):
+        for f in ("left", "right"):
             for a in ("x", "y", "z"):
                 j = next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_{a}_joint"))
                 self.nail_q_index[f"{f}_{a}"] = int(q_start[j])
@@ -291,7 +291,7 @@ class Sim:
         return out
 
     def set_nail_target(self, finger, x_deg=0.0, y_deg=0.0, push_mm=0.0):
-        """finger は "f1" か "f2"。バネの平衡位置をリミットでクランプして変える (センサ用途では呼ばない)。"""
+        """finger は "left" か "right"。バネの平衡位置をリミットでクランプして変える (センサ用途では呼ばない)。"""
         vals = {
             "x": np.radians(np.clip(x_deg, -7.0, 7.0)),
             "y": np.radians(np.clip(y_deg, -7.0, 7.0)),

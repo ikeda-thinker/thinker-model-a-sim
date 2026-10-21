@@ -50,7 +50,7 @@ NAIL_ACTIVE_MM = 0.2  # 押し込みがこれを超えたら接触とみなす [
 NAIL_ACTIVE_DEG = 0.5  # 回転がこれを超えたら接触とみなす [deg]
 NAIL_HIST = 3  # 観測に入れるネイル値の履歴長
 
-NAIL_KEYS = ("f1_x", "f1_y", "f1_z", "f2_x", "f2_y", "f2_z")
+NAIL_KEYS = ("left_x", "left_y", "left_z", "right_x", "right_y", "right_z")
 
 
 def potential(d, n_touch, lift):
@@ -83,7 +83,7 @@ class ArmIK:
         self.model = builder.finalize()
         labels = list(self.model.body_label)
         tool = next(i for i, l in enumerate(labels) if l.endswith("thinker_THF1_tool_link"))
-        tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("f1", "f2")]
+        tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
         q = self.model.joint_q.numpy()
         q[: len(q_seed)] = q_seed
         state = self.model.state()
@@ -164,7 +164,7 @@ class GraspEnv(sim.Sim):
         self.arm_q = np.array(self.arm_q_index)  # アームは q と dof の並びが同じ
         self.ik = ArmIK(args.urdf, np.radians(ARM_Q_DEG))
         labels = list(self.model.body_label)
-        self.tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("f1", "f2")]
+        self.tips = [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
         self.init_objects()
         self.reset()
 

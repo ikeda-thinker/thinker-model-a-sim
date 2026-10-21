@@ -106,7 +106,7 @@ class VecGraspEnv(sim.Sim):
 
     def tips_of_world0(self):
         labels = list(self.model.body_label)
-        return [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("f1", "f2")]
+        return [next(i for i, l in enumerate(labels) if l.endswith(f"{f}_thinker_TF1_tip_link")) for f in ("left", "right")]
 
     # ---- 状態の読み書き ----
     def read(self):
@@ -331,8 +331,8 @@ class VecGraspEnv(sim.Sim):
         tc = "".join("*" if t else "-" for t in d["touching"][w])
         return (
             f"env{w} t={d['t'][w]:3d} {phase:7s} grip={d['grip'][w]:4.1f}mm lift={d['lift'][w] * 1e3:+5.1f}mm | "
-            f"f1 push={n[2]:4.2f}mm x={n[0]:+5.2f} y={n[1]:+5.2f}deg | "
-            f"f2 push={n[5]:4.2f}mm x={n[3]:+5.2f} y={n[4]:+5.2f}deg | touch={tc}"
+            f"left push={n[2]:4.2f}mm x={n[0]:+5.2f} y={n[1]:+5.2f}deg | "
+            f"right push={n[5]:4.2f}mm x={n[3]:+5.2f} y={n[4]:+5.2f}deg | touch={tc}"
         )
 
     def nail_ui(self, imgui):

@@ -9,6 +9,12 @@
 - THF (packages/think-hand-f.stl): 1 指ぶんのユニット。z が指の軸 (上端の板に爪を差す)、x が内側。
   座標はそのまま (mm → m だけ)。URDF の base_link の visual / collision の origin で位置を合わせる。
   見た目は外から見える部品だけ残して軽くし、当たり判定は本体の外形の凸包にする。
+  一番下のタブ (厚さ 6 x 幅 20mm、x=-3〜3, z=-41.3〜-26.8) に x 方向の M3 穴が 2 個 (y=±7, z=-37.3) あり、ここをアダプタに留める。
+- Hand-E と THF のアダプタ (packages/thf-hande-adapter-v3.stl): 厚さ 8.8mm の板 (z=-4.4〜4.4)。
+  z=+4.4 の面に Hand-E の指スライダーの凸部 (幅 6, 高さ 1mm) がはまる溝 (y=14.25 中心) があり、
+  M3 の座ぐり穴 2 個 (x=3, 12, y=14.25、頭は z=-4.4 側) で Hand-E の指取付ねじ穴に留める。
+  x=+22 の面に THF のタブが入るポケット (深さ 1mm、底 x=21) があり、y=±7, z=-1.1 のインサートに THF を留める。
+  Hand-E の指フレーム (robotiq_hande_description の finger.dae と同じ。ねじ穴 x=-2.98, 6.02, y=-14.23、本体の上面 z=0) に回して書き出す。
 """
 from pathlib import Path
 
@@ -31,6 +37,12 @@ THF_OUT = PKG / "fingers/thinker-TF1/meshes"
 THF_NAME = "thf"
 THF_VISIBLE_MM = 2.0  # 全体の凸包からこの距離以内に頂点がある部品を外から見える部品とみなす
 THF_BODY_Z_MM = (-31.0, 21.0)  # 当たり判定に使う本体の高さ範囲 (下のブラケット・ケーブル、上の板は除く)
+
+ADAPTER_SRC = ROOT / "packages/thf-hande-adapter-v3.stl"
+ADAPTER_OUT = THF_OUT
+ADAPTER_NAME = "hande-adapter"
+# STL → Hand-E の左指フレーム。x 軸まわりに 180° 回して溝の面を下 (z=0) に、座ぐり穴を Hand-E のねじ穴に合わせる
+ADAPTER_SHIFT_MM = (-6.0, 0.0, 4.4)
 
 
 def nail_to_link(m):
@@ -90,6 +102,23 @@ def convert_thf():
     print(f"THF visual: {len(parts)} 部品中 {len(visible)} 部品, {len(vis.faces)} 面 / collision: {len(col.faces)} 面")
 
 
+def convert_adapter():
+    """見た目は本体だけ (中のインサート 2 個は外から見えないので除く)、当たり判定は本体の凸包"""
+    m = trimesh.load(ADAPTER_SRC)
+    body = max(m.split(only_watertight=False), key=lambda p: len(p.faces))
+    T = np.eye(4)
+    T[:3, :3] = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
+    T[:3, 3] = ADAPTER_SHIFT_MM
+    body.apply_transform(T)
+    body.apply_scale(1e-3)
+    col = coarse_hull(body.vertices, HULL_GRID)
+    body.export(ADAPTER_OUT / "visual" / f"{ADAPTER_NAME}.stl")
+    col.export(ADAPTER_OUT / "collision" / f"{ADAPTER_NAME}.stl")
+    lo, hi = body.bounds * 1e3
+    print(f"アダプタ: x {lo[0]:.1f}〜{hi[0]:.1f}, y {lo[1]:.1f}〜{hi[1]:.1f}, z {lo[2]:.1f}〜{hi[2]:.1f}mm / collision: {len(col.faces)} 面")
+
+
 if __name__ == "__main__":
     convert_nail()
     convert_thf()
+    convert_adapter()

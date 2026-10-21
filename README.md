@@ -20,6 +20,6 @@ uv run tools/view.py         # http://localhost:8080 を開く
 | `ur_description` | 公式。`fetch_packages.sh` で取得 (gitignore) |
 | `robotiq_hande_description` | 非公式 (macmacal)。`fetch_packages.sh` で取得 (gitignore) |
 | `realsense2_description` | realsense-ros 由来の D405 のみコミット済み |
-| `thinker_ros2_description` | **仮の箱型メッシュ (STL)**。形状は推定。本物の `.dae` を同じパスに置けば優先される |
+| `thinker_ros2_description` | 爪 (`pile-nail`)・THF (`thf`)・Hand-E とのアダプタ (`hande-adapter`) は CAD から変換。残りは**仮の箱型メッシュ (STL)** で形状は推定。本物の `.dae` を同じパスに置けば優先される |
 
-仮メッシュは `tools/make_placeholders.py` で再生成できる。
+CAD のメッシュは `packages/*.stl` (Fusion 360 から書き出した mm 単位) から `tools/convert_meshes.py` で、仮メッシュは `tools/make_placeholders.py` で再生成できる。

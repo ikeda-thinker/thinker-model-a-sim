@@ -86,8 +86,8 @@ class PressTest(sim.Sim):
             lift = self.state_0.joint_q.numpy()[self.table_q] * 1e3
             print(
                 f"t={t:4.2f}s 台={lift:5.2f}mm "
-                f"push1={n['f1_z']:+.2f} push2={n['f2_z']:+.2f}mm "
-                f"x1={n['f1_x']:+.2f} y1={n['f1_y']:+.2f} x2={n['f2_x']:+.2f} y2={n['f2_y']:+.2f}deg"
+                f"pushL={n['left_z']:+.2f} pushR={n['right_z']:+.2f}mm "
+                f"xL={n['left_x']:+.2f} yL={n['left_y']:+.2f} xR={n['right_x']:+.2f} yR={n['right_y']:+.2f}deg"
             )
 
 

@@ -9,6 +9,11 @@
 - THF (packages/think-hand-f.stl): 1 指ぶんのユニット。z が指の軸 (上端の板に爪を差す)、x が内側。
   座標はそのまま (mm → m だけ)。URDF の base_link の visual / collision の origin で位置を合わせる。
   見た目は外から見える部品だけ残して軽くし、当たり判定は本体の外形の凸包にする。
+  上端の穴 (筐体の上端 z=16mm) の中の部品は凸包から引っ込んでいるが、穴から見えるので残す。これらはセンサの可動部で、見た目を別にして URDF の可動リンクに付ける
+  (座標は THF と同じまま。各リンクの visual の origin で位置を合わせる)。
+  - thf-gimbal (y_link: x/y に傾くだけ): 穴の中の球殻 (外面が回転中心 z≈0.3mm まわりの半径 17.7mm の球面で、筐体の縁に接するので沈めない)、
+    その内側のカラー、ピン穴が回転中心にあるジンバルの内輪
+  - thf-tip (z_link: 傾いて押し込みで沈む): 球殻より上に出ている軸 (上端の板に爪を差す)・スリーブ・フランジ
   一番下のタブ (厚さ 6 x 幅 20mm、x=-3〜3, z=-41.3〜-26.8) に x 方向の M3 穴が 2 個 (y=±7, z=-37.3) あり、ここをアダプタに留める。
 - Hand-E と THF のアダプタ (packages/thf-hande-adapter-v3.stl): 厚さ 8.8mm の板 (z=-4.4〜4.4)。
   z=+4.4 の面に Hand-E の指スライダーの凸部 (幅 6, 高さ 1mm) がはまる溝 (y=14.25 中心) があり、
@@ -37,6 +42,8 @@ THF_OUT = PKG / "fingers/thinker-TF1/meshes"
 THF_NAME = "thf"
 THF_VISIBLE_MM = 2.0  # 全体の凸包からこの距離以内に頂点がある部品を外から見える部品とみなす
 THF_BODY_Z_MM = (-31.0, 21.0)  # 当たり判定に使う本体の高さ範囲 (下のブラケット・ケーブル、上の板は除く)
+THF_OPENING_MM = (13.0, 12.0)  # 半径がこれ以内で上端がこの高さより上の部品を、上端の穴から見える部品として残す [mm]
+THF_TIP_Z_MM = 22.0  # 穴の中の部品のうち、上端がこれより上のものを thf-tip、残りを thf-gimbal にする。球殻の上端は 20.6mm
 
 ADAPTER_SRC = ROOT / "packages/thf-hande-adapter-v3.stl"
 ADAPTER_OUT = THF_OUT
@@ -90,16 +97,27 @@ def convert_thf():
     m = trimesh.load(THF_SRC)
     parts = m.split(only_watertight=False)
     hull = m.convex_hull
-    visible = [p for p in parts if np.abs(hull.nearest.signed_distance(p.vertices[:: max(1, len(p.vertices) // 50)])).min() < THF_VISIBLE_MM]
-    vis = trimesh.util.concatenate(visible)
-    vis.apply_scale(1e-3)
+    opening = [p for p in parts if np.hypot(p.vertices[:, 0], p.vertices[:, 1]).max() < THF_OPENING_MM[0] and p.bounds[1, 2] > THF_OPENING_MM[1]]
+    ids = {id(p) for p in opening}
+    visible = [
+        p for p in parts
+        if id(p) not in ids and np.abs(hull.nearest.signed_distance(p.vertices[:: max(1, len(p.vertices) // 50)])).min() < THF_VISIBLE_MM
+    ]
+    tip = [p for p in opening if p.bounds[1, 2] > THF_TIP_Z_MM]
+    gimbal = [p for p in opening if p.bounds[1, 2] <= THF_TIP_Z_MM]
+    vis, vis_gimbal, vis_tip = (trimesh.util.concatenate(ps) for ps in (visible, gimbal, tip))
+    for v in (vis, vis_gimbal, vis_tip):
+        v.apply_scale(1e-3)
     body = m.vertices[(m.vertices[:, 2] >= THF_BODY_Z_MM[0]) & (m.vertices[:, 2] <= THF_BODY_Z_MM[1])]
     col = coarse_hull(body * 1e-3, 2 * HULL_GRID)
     (THF_OUT / "visual").mkdir(parents=True, exist_ok=True)
     (THF_OUT / "collision").mkdir(parents=True, exist_ok=True)
     vis.export(THF_OUT / "visual" / f"{THF_NAME}.stl")
+    vis_gimbal.export(THF_OUT / "visual" / f"{THF_NAME}-gimbal.stl")
+    vis_tip.export(THF_OUT / "visual" / f"{THF_NAME}-tip.stl")
     col.export(THF_OUT / "collision" / f"{THF_NAME}.stl")
-    print(f"THF visual: {len(parts)} 部品中 {len(visible)} 部品, {len(vis.faces)} 面 / collision: {len(col.faces)} 面")
+    print(f"THF visual: {len(parts)} 部品中 本体 {len(visible)} / gimbal {len(gimbal)} / tip {len(tip)} 部品, "
+          f"{len(vis.faces)} / {len(vis_gimbal.faces)} / {len(vis_tip.faces)} 面 / collision: {len(col.faces)} 面")
 
 
 def convert_adapter():

@@ -84,6 +84,10 @@ def build_robot(urdf: str) -> newton.ModelBuilder:
         joint_damping_mode="passive",
     )
     Path(f.name).unlink(missing_ok=True)
+    # 色指定のないパーツには newton が形状ごとにパレットの派手な色を振るので、灰色に差し替える (material 指定のあるパーツはそのまま)
+    for s, c in enumerate(robot.shape_color):
+        if tuple(c) == tuple(newton.ModelBuilder._shape_palette_color(s)):
+            robot.shape_color[s] = (0.6, 0.6, 0.6)
     # 自己衝突は切っているが、左右の爪同士だけは当てる (実機では全閉の手前で爪先がぶつかる)
     nail = {
         f: {s for s, b in enumerate(robot.shape_body) if b >= 0 and robot.body_label[b].endswith(f"{f}_thinker_TF1_nail_link")}

@@ -35,6 +35,8 @@ class VecGraspEnv(sim.Sim):
     CLOSE_STEPS = 1  # スクリプト方策が開から閉へゆっくり閉じるステップ数。1 だと一気に閉じて物体を弾く
     PHASE_TOL = 1e-3  # スクリプト方策が「到達」とみなす関節目標の誤差 [rad]
     LIBRARY_ROUNDS = 2  # 山のライブラリ: 全環境で同時に作る回数 (num_envs * 回数 個の山)
+    # 学習スクリプトが集計に使う結果の種類 (info のキー, 表示名)
+    OUTCOMES = (("success", "成功"), ("dropped", "落下"), ("missed", "空振り"), ("timeout", "時間切れ"))
 
     def add_scene(self, builder):
         gp.PileEnv.add_scene(self, builder)

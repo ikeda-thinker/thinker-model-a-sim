@@ -1,7 +1,8 @@
-"""VecGraspEnv を PPO で学習する (自前の最小実装、torch)。
+"""VecGraspEnv (ばら積み把持) / PegEnv (ピン挿入) を PPO で学習する (自前の最小実装、torch)。
 
     uv run tools/train_ppo.py --viewer null --num-envs 64 --iters 500
     uv run tools/train_ppo.py --viewer null --eval ckpt/ppo_latest.pt --episodes 200   # 決定的方策で評価
+    uv run tools/train_ppo.py --task peg --viewer null --num-envs 256 --bc-steps 0 --save-dir ckpt/peg
 
 - 観測は実行時平均・分散で正規化、報酬は割引リターンの標準偏差でスケーリング
 - 時間切れ (timeout) は終端扱いにせず、リセット前の最終観測の V でブートストラップする
@@ -19,6 +20,7 @@ import torch.nn as nn
 import newton.examples
 import grasp_env as ge
 import grasp_vec as gv
+import peg_env as pe
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -81,14 +83,15 @@ def evaluate(env, net, obs_rms, episodes, noise=0.0):
         obs, _, done, info = env.step_env(act)
         env.render()  # null ビューアでは何もしない
         for w in np.nonzero(done)[0]:
-            s = stats.setdefault(info["type"][w], [0, 0, 0, 0, 0])
+            s = stats.setdefault(info["type"][w], [0] * (1 + len(env.OUTCOMES)))
             s[0] += 1
-            s[1:] = [s[1] + bool(info["success"][w]), s[2] + bool(info["dropped"][w]), s[3] + bool(info["missed"][w]), s[4] + bool(info["timeout"][w])]
+            for j, (k, _) in enumerate(env.OUTCOMES):
+                s[1 + j] += bool(info[k][w])
             finished += 1
     if not stats:  # 1 エピソードも終わらないうちにビューアを閉じた
         return
     tot = np.sum(list(stats.values()), axis=0)
-    print(f"  {'形状':8s} 試行 成功 落下 空振り 時間切れ")
+    print(f"  {'種類':8s} 試行 " + " ".join(name for _, name in env.OUTCOMES))
     for name in sorted(stats):
         print(f"  {name:8s} " + " ".join(f"{v:4d}" for v in stats[name]))
     print(f"  {'合計':8s} " + " ".join(f"{v:4d}" for v in tot) + f"   成功率 {tot[1] / tot[0]:.2f}")
@@ -134,6 +137,7 @@ def behavior_clone(net, obs_rms, X, Y, epochs, lr=1e-3, batch=256):
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
+    parser.add_argument("--task", choices=("pick", "peg"), default="pick", help="pick: ばら積み把持, peg: ピン挿入")
     parser.add_argument("--urdf", default="thinker-TMA-F1-REFX4-U3.urdf")
     parser.add_argument("--num-envs", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
@@ -161,15 +165,18 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=200, help="--eval のエピソード数")
     parser.add_argument("--pos-noise-mm", type=float, default=ge.EST_POS_STD * 1e3)
     parser.add_argument("--yaw-noise-deg", type=float, default=float(np.degrees(ge.EST_YAW_STD)))
+    pe.add_env_args(parser)
     parser.set_defaults(num_frames=10**9)
     viewer, args = newton.examples.init(parser)
+    pe.apply_env_args(args)
     ge.EST_POS_STD = args.pos_noise_mm * 1e-3
     ge.EST_YAW_STD = np.radians(args.yaw_noise_deg)
     torch.manual_seed(args.seed)
 
     use_bc = args.bc_steps > 0 and not (args.resume or args.eval)
     gv.VecGraspEnv.PHASE_TOL = args.phase_tol
-    env = gv.VecGraspEnv(viewer, args, seed=args.seed, scripted=use_bc)
+    env_cls = pe.PegEnv if args.task == "peg" else gv.VecGraspEnv
+    env = env_cls(viewer, args, seed=args.seed, scripted=use_bc)
     N, T = env.num_envs, args.horizon
     print(f"num_envs={N} obs_dim={env.obs_dim} act_dim={env.act_dim} device={DEV}")
     net = ActorCritic(env.obs_dim, env.act_dim).to(DEV)
@@ -203,7 +210,7 @@ if __name__ == "__main__":
         warmup = args.critic_warmup  # BC の重みから再開するときも、critic が育つまで actor を動かさない
 
     ret_run = np.zeros(N)  # 報酬スケーリング用の割引リターン
-    recent = []  # 直近エピソードの (成功, 落下, 空振り, 時間切れ, 報酬和)
+    recent = []  # 直近エピソードの (各結果 (env.OUTCOMES の順), 報酬和)
     ep_ret = np.zeros(N)
     t_start, total_steps = time.time(), 0
     for it in range(1, args.iters + 1):
@@ -230,7 +237,7 @@ if __name__ == "__main__":
             ret_run[done] = 0.0
             rew_buf[t], term_buf[t] = rew, done
             for w in np.nonzero(done)[0]:
-                recent.append((info["success"][w], info["dropped"][w], info["missed"][w], info["timeout"][w], ep_ret[w]))
+                recent.append(tuple(info[k][w] for k, _ in env.OUTCOMES) + (ep_ret[w],))
             ep_ret[done] = 0.0
         total_steps += T * N
         if not (use_bc or args.resume):  # 模倣・再開から始めたときは正規化を固定する (入力スケールがずれると模倣した方策が崩れる)
@@ -270,11 +277,12 @@ if __name__ == "__main__":
                 opt.step()
 
         if it % 5 == 0 or it == 1:
-            r = np.array(recent[-200:], dtype=float) if recent else np.zeros((1, 5))
+            r = np.array(recent[-200:], dtype=float) if recent else np.zeros((1, len(env.OUTCOMES) + 1))
             sps = total_steps / (time.time() - t_start)
+            res = " ".join(f"{name} {r[:, j].mean():.2f}" for j, (_, name) in enumerate(env.OUTCOMES))
             print(
-                f"it {it:4d} steps {total_steps:8d} | 成功 {r[:, 0].mean():.2f} 落下 {r[:, 1].mean():.2f} 空振り {r[:, 2].mean():.2f} "
-                f"時間切れ {r[:, 3].mean():.2f} 報酬和 {r[:, 4].mean():6.1f} | std {net.log_std.exp().mean().item():.2f} | {sps:.0f} step/s",
+                f"it {it:4d} steps {total_steps:8d} | {res} 報酬和 {r[:, -1].mean():6.1f} | "
+                f"std {net.log_std.exp().mean().item():.2f} | {sps:.0f} step/s",
                 flush=True,
             )
         if it % 25 == 0 or it == args.iters:

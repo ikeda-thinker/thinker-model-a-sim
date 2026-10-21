@@ -512,9 +512,11 @@
       <inertia ixx="2e-7" ixy="0" ixz="0" iyy="2e-7" iyz="0" izz="1e-7"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- THF の穴の中のジンバル (球殻・カラー・内輪、tools/convert_meshes.py で CAD から作成)。傾くだけで押し込みでは沈まない。
+           座標は base_link の thf.stl と同じなので、y_link から見た base_link の visual の origin を置く -->
+      <origin rpy="1.5707963267948966 -1.5707963267948966 0" xyz="0 0.0003 0.0039"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/y.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf-gimbal.stl"/>
       </geometry>
     </visual>
   </link>
@@ -525,9 +527,11 @@
       <inertia ixx="1.8e-6" ixy="0" ixz="0" iyy="1.8e-6" iyz="0" izz="6e-7"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- THF の可動部のうち押し込みで沈む部分 (軸・スリーブ・フランジ・上端の板、tools/convert_meshes.py で CAD から作成)。座標は base_link の thf.stl と同じなので、
+           関節がすべて 0 のときに thf.stl と同じ位置に来るよう z_link から見た base_link の visual の origin を置く -->
+      <origin rpy="0 0 1.5707963267948966" xyz="0 0 -0.0003"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/z.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf-tip.stl"/>
       </geometry>
     </visual>
   </link>
@@ -770,9 +774,11 @@
       <inertia ixx="2e-7" ixy="0" ixz="0" iyy="2e-7" iyz="0" izz="1e-7"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- THF の穴の中のジンバル (球殻・カラー・内輪、tools/convert_meshes.py で CAD から作成)。傾くだけで押し込みでは沈まない。
+           座標は base_link の thf.stl と同じなので、y_link から見た base_link の visual の origin を置く -->
+      <origin rpy="1.5707963267948966 -1.5707963267948966 0" xyz="0 0.0003 0.0039"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/y.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf-gimbal.stl"/>
       </geometry>
     </visual>
   </link>
@@ -783,9 +789,11 @@
       <inertia ixx="1.8e-6" ixy="0" ixz="0" iyy="1.8e-6" iyz="0" izz="6e-7"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <!-- THF の可動部のうち押し込みで沈む部分 (軸・スリーブ・フランジ・上端の板、tools/convert_meshes.py で CAD から作成)。座標は base_link の thf.stl と同じなので、
+           関節がすべて 0 のときに thf.stl と同じ位置に来るよう z_link から見た base_link の visual の origin を置く -->
+      <origin rpy="0 0 1.5707963267948966" xyz="0 0 -0.0003"/>
       <geometry>
-        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/z.dae"/>
+        <mesh filename="package://thinker_ros2_description/fingers/thinker-TF1/meshes/visual/thf-tip.stl"/>
       </geometry>
     </visual>
   </link>
@@ -1167,7 +1175,7 @@
   <joint name="left_thinker_TF1_nail_joint" type="fixed">
     <parent link="left_thinker_TF1_nail_mount_link"/>
     <child link="left_thinker_TF1_nail_link"/>
-    <origin rpy="0 0 0" xyz="0 0.0015 0"/>
+    <origin rpy="0 0 0" xyz="0 0.0003 0"/>
   </joint>
   <joint name="left_thinker_TF1_tip_joint" type="fixed">
     <parent link="left_thinker_TF1_nail_link"/>
@@ -1266,7 +1274,7 @@
   <joint name="right_thinker_TF1_nail_joint" type="fixed">
     <parent link="right_thinker_TF1_nail_mount_link"/>
     <child link="right_thinker_TF1_nail_link"/>
-    <origin rpy="0 0 3.141592653589793" xyz="0 -0.0015 0"/>
+    <origin rpy="0 0 3.141592653589793" xyz="0 -0.0003 0"/>
   </joint>
   <joint name="right_thinker_TF1_tip_joint" type="fixed">
     <parent link="right_thinker_TF1_nail_link"/>

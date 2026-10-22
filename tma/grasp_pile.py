@@ -1,20 +1,20 @@
 """ばら積み版の把持環境。ビンに小物 (ねじ・ピン・ナット・ワッシャ・球・ブロック・カプセル) を落として山を作り、
 山の上の方から 1 個を対象にする。対象の位置・向きはノイズ付きの推定値として方策に渡す。
 
-    uv run tma/envs/grasp_pile.py --viewer null --episodes 5   # スクリプト方策で把持 (形状別の成功率を表示)
-    uv run tma/envs/grasp_pile.py --viewer viser               # ブラウザで見る (http://localhost:8080)
+    uv run tma/grasp_pile.py --viewer null --episodes 5   # スクリプト方策で把持 (形状別の成功率を表示)
+    uv run tma/grasp_pile.py --viewer viser               # ブラウザで見る (http://localhost:8080)
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton
 import newton.examples
-from tma.envs import grasp as ge
+from tma import grasp as ge
 from tma import sim
 
 N_OBJ = 15

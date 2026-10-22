@@ -11,15 +11,15 @@
   スパイラル探索のような「当たった高さを覚えて探る」動きを、記憶なしの方策でも真似できるように)
 - 報酬: 穴との水平距離・穴上面への接近・挿入深さのポテンシャル差分 + 成功ボーナス - ずれ (握り直し) - 押し込みすぎ - 行動の変化量
 
-    uv run tma/envs/peg.py --viewer null --num-envs 64 --episodes 200      # スパイラル探索 (古典手法) の成功率
-    uv run tma/envs/peg.py --viewer null --num-envs 64 --policy straight   # 推定位置に真っすぐ下ろすだけ
-    uv run tma/envs/peg.py --num-envs 4                                    # GL で見る
+    uv run tma/peg.py --viewer null --num-envs 64 --episodes 200      # スパイラル探索 (古典手法) の成功率
+    uv run tma/peg.py --viewer null --num-envs 64 --policy straight   # 推定位置に真っすぐ下ろすだけ
+    uv run tma/peg.py --num-envs 4                                    # GL で見る
 """
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
@@ -27,7 +27,7 @@ import warp as wp
 import newton
 import newton.examples
 from newton import JointTargetMode
-from tma.envs import grasp as ge
+from tma import grasp as ge
 from tma import sim
 
 # ピン (アルミ、Ø8 x 40mm)。鋼 (16g) だと pyramidal 錐でも楕円錐でも握ったまま 10mm/s ほどでずり落ちる (MuJoCo の摩擦のクリープ)

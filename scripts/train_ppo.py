@@ -18,9 +18,9 @@ import torch
 import torch.nn as nn
 
 import newton.examples
-from tma.envs import grasp as ge
-from tma.envs import grasp_pile_vec as gv
-from tma.envs import peg as pe
+from tma import grasp as ge
+from tma import grasp_pile_vec as gv
+from tma import peg as pe
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -7,22 +7,22 @@
   アームを q_pre (バッチ IK) に置くだけなので、リセット時に物理を回さない
 - done になった環境は step() の中で自動リセットされ、戻り値の obs は次のエピソードの最初の観測
 
-    uv run tma/envs/grasp_pile_vec.py --viewer null --num-envs 64 --episodes 200   # スクリプト方策で動作確認
-    uv run tma/envs/grasp_pile_vec.py --num-envs 4 --print-every 5                 # 爪の状態をコンソールと GL のパネル・グラフに表示
+    uv run tma/grasp_pile_vec.py --viewer null --num-envs 64 --episodes 200   # スクリプト方策で動作確認
+    uv run tma/grasp_pile_vec.py --num-envs 4 --print-every 5                 # 爪の状態をコンソールと GL のパネル・グラフに表示
 """
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # リポジトリ直下 (tma パッケージ)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # リポジトリ直下 (tma パッケージ)
 
 import numpy as np
 import warp as wp
 
 import newton
 import newton.examples
-from tma.envs import grasp as ge
-from tma.envs import grasp_pile as gp
+from tma import grasp as ge
+from tma import grasp_pile as gp
 from tma import sim
 
 

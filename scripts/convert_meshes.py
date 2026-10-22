@@ -1,12 +1,12 @@
 """Fusion 360 から書き出した STL (mm) を URDF 用のメッシュ (m) に直す。
 
-    uv run tools/convert_meshes.py
+    uv run scripts/convert_meshes.py
 
-- 爪 (packages/pile-nail-v1.stl): y が長さ方向 (根元の面 y=0 〜 先端 45mm)、z が内側 (相手の指) へのずれ、x が幅。
+- 爪 (cad/pile-nail-v1.stl): y が長さ方向 (根元の面 y=0 〜 先端 45mm)、z が内側 (相手の指) へのずれ、x が幅。
   根元に THF の板 (3x7mm) を差す穴 (8.4x5.4mm、深さ 8mm) がある。
   nail_link の座標 (z が長さ方向で根元の面が原点、y が内側、x が幅) に回して書き出す。
   曲がった形の凸包だと内側が埋まるので、当たり判定は長さ方向に切った区間ごとの凸包にする。
-- THF (packages/think-hand-f.stl): 1 指ぶんのユニット。z が指の軸 (上端の板に爪を差す)、x が内側。
+- THF (cad/think-hand-f.stl): 1 指ぶんのユニット。z が指の軸 (上端の板に爪を差す)、x が内側。
   座標はそのまま (mm → m だけ)。URDF の base_link の visual / collision の origin で位置を合わせる。
   見た目は外から見える部品だけ残して軽くし、当たり判定は本体の外形の凸包にする。
   上端の穴 (筐体の上端 z=16mm) の中の部品は凸包から引っ込んでいるが、穴から見えるので残す。これらはセンサの可動部で、見た目を別にして URDF の可動リンクに付ける
@@ -16,12 +16,12 @@
   - thf-tip (z_link: 傾いて押し込みで沈む): 球殻より上に出ている軸 (上端の板に爪を差す)・スリーブ・フランジ
   実機は筐体が黒でねじ・タブ・先端の可動部が金属の地色なので、本体のうち小さい部品 (ねじ・ピン・タブ) は thf-metal に分けて URDF で色を変える。
   一番下のタブ (厚さ 6 x 幅 20mm、x=-3〜3, z=-41.3〜-26.8) に x 方向の M3 穴が 2 個 (y=±7, z=-37.3) あり、ここをアダプタに留める。
-- Hand-E と THF のアダプタ (packages/thf-hande-adapter-v3.stl): 厚さ 8.8mm の板 (z=-4.4〜4.4)。
+- Hand-E と THF のアダプタ (cad/thf-hande-adapter-v3.stl): 厚さ 8.8mm の板 (z=-4.4〜4.4)。
   z=+4.4 の面に Hand-E の指スライダーの凸部 (幅 6, 高さ 1mm) がはまる溝 (y=14.25 中心) があり、
   M3 の座ぐり穴 2 個 (x=3, 12, y=14.25、頭は z=-4.4 側) で Hand-E の指取付ねじ穴に留める。
   x=+22 の面に THF のタブが入るポケット (深さ 1mm、底 x=21) があり、y=±7, z=-1.1 のインサートに THF を留める。
   Hand-E の指フレーム (robotiq_hande_description の finger.dae と同じ。ねじ穴 x=-2.98, 6.02, y=-14.23、本体の上面 z=0) に回して書き出す。
-- D405 (packages/realsense2_description/meshes/d405.stl): 1 つにつながったメッシュで、z=0 が前面 (奥行き 23mm)。
+- D405 (cad/d405.stl): 1 つにつながったメッシュで、z=0 が前面 (奥行き 23mm)。
   実機はアルミの筐体の前面が黒いガラスなので、前を向いた前面付近の面を d405-front、残りを d405-body に分けて URDF で色を変える。座標・単位 (mm) はそのまま。
 """
 from pathlib import Path
@@ -32,7 +32,7 @@ import trimesh
 ROOT = Path(__file__).resolve().parent.parent
 PKG = ROOT / "packages/think_hand_f_description"
 
-NAIL_SRC = ROOT / "packages/pile-nail-v1.stl"
+NAIL_SRC = ROOT / "cad/pile-nail-v1.stl"
 NAIL_OUT = PKG / "nails/thinker-TF1/meshes"
 NAIL_NAME = "pile-nail"
 NAIL_CUTS_MM = (0.0, 9.0, 13.5, 18.0, 22.5, 27.0)  # 当たり判定の区間の区切り (根元の面からの長さ)。最後の区切りから滑り止めの手前までが刃
@@ -40,7 +40,7 @@ NAIL_PAD_MM = 10.0  # 先端の滑り止め (ゴム) の長さ。この区間は
 
 HULL_GRID = 0.5e-3  # 当たり判定の凸包を作る前に点を丸める格子 [m]
 
-THF_SRC = ROOT / "packages/think-hand-f.stl"
+THF_SRC = ROOT / "cad/think-hand-f.stl"
 THF_OUT = PKG / "fingers/thinker-TF1/meshes"
 THF_NAME = "thf"
 THF_VISIBLE_MM = 2.0  # 全体の凸包からこの距離以内に頂点がある部品を外から見える部品とみなす
@@ -49,11 +49,12 @@ THF_OPENING_MM = (13.0, 12.0)  # 半径がこれ以内で上端がこの高さ�
 THF_TIP_Z_MM = 22.0  # 穴の中の部品のうち、上端がこれより上のものを thf-tip、残りを thf-gimbal にする。球殻の上端は 20.6mm
 THF_METAL_MM = 30.0  # 外から見える部品のうち、一番長い辺がこれより短いもの (ねじ・ピン・タブ) を金属の部品 thf-metal にする。黒い筐体・カバーは 31mm 以上
 
-D405_SRC = ROOT / "packages/realsense2_description/meshes/d405.stl"
+D405_SRC = ROOT / "cad/d405.stl"
+D405_OUT = ROOT / "packages/realsense2_description/meshes"
 D405_FRONT_MM = -1.5  # 中心がこれより前 (z が大きい) で前を向いた面を前面のガラスにする。前面の板は z=-1〜0
 D405_FRONT_NZ = 0.5  # 前を向いているとみなす法線の z 成分の下限
 
-ADAPTER_SRC = ROOT / "packages/thf-hande-adapter-v3.stl"
+ADAPTER_SRC = ROOT / "cad/thf-hande-adapter-v3.stl"
 ADAPTER_OUT = THF_OUT
 ADAPTER_NAME = "hande-adapter"
 # STL → Hand-E の左指フレーム。x 軸まわりに 180° 回して溝の面を下 (z=0) に、座ぐり穴を Hand-E のねじ穴に合わせる
@@ -153,7 +154,7 @@ def convert_d405():
     m = trimesh.load(D405_SRC)
     front = (m.triangles_center[:, 2] > D405_FRONT_MM) & (m.face_normals[:, 2] > D405_FRONT_NZ)
     for name, mask in (("front", front), ("body", ~front)):
-        m.submesh([np.flatnonzero(mask)], append=True).export(D405_SRC.with_name(f"d405-{name}.stl"))
+        m.submesh([np.flatnonzero(mask)], append=True).export(D405_OUT / f"d405-{name}.stl")
     print(f"D405: 前面 {front.sum()} / 筐体 {(~front).sum()} 面")
 
 

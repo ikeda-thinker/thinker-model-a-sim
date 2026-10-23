@@ -2,7 +2,7 @@
 
 - reset: ワークをランダムに置き、ノイズ付き推定姿勢の上空 PRE_HEIGHT へ IK でアームを置く (q_pre)。IK はここだけ
 - 行動 (6 次元, [-1, 1]): shoulder_pan / shoulder_lift / elbow / wrist_1 / wrist_3 の目標角の差分 (×ACT_SCALE rad) と
-  Hande の開度 (絶対値、-1=閉 / +1=GRIP_OPEN_MAX_MM)。wrist_2 は q_pre のまま固定 (下向き把持では IK でもほぼ -90 度のまま)
+  Hande の開度 (絶対値、-1=GRIP_CLOSE_MM / +1=GRIP_OPEN_MAX_MM)。wrist_2 は q_pre のまま固定 (下向き把持では IK でもほぼ -90 度のまま)
 - 観測: アーム q, dq、開度、ネイル 6 値の履歴、q - q_pre、ワークの推定位置 (爪先基準) と推定 yaw のずれ
 - 報酬: 接近 + ネイルの反応 + 持ち上げ高さ + 成功ボーナス - 行動の変化量
 
@@ -30,6 +30,8 @@ ACT_JOINTS = (0, 1, 2, 3, 5)
 ACT_SCALE = 0.03  # 1 制御ステップあたりの関節目標の最大変化 [rad]
 ACT_EMA = 0.5  # 行動の平滑化 (1 で平滑化なし)
 GRIP_OPEN_MAX_MM = 25.0  # 開度行動 +1 に対応する片指の開き [mm]。バラ積み爪は先端が内側に寄るので全ストロークまで使う
+# 開度行動 -1 に対応する片指の開き [mm]。左右の爪先は片指 6.8mm で接する (7mm で隙間 0.4mm)。0 まで閉じると爪同士が押し合う
+GRIP_CLOSE_MM = 7.0
 CTRL_FRAMES = 3  # 1 制御ステップの物理フレーム数 (60Hz / 3 = 20Hz)
 EP_STEPS = 160  # 8 s
 
@@ -42,6 +44,7 @@ OBJ_XY_RANGE = 0.02  # 置き位置のばらつき (±) [m]
 EST_POS_STD = 0.003  # [m]
 EST_YAW_STD = np.radians(5.0)
 
+GRASP_BELOW = 0.002  # スクリプト方策が爪先を対象の推定底面からさらに下げる量 [m]
 PRE_HEIGHT = 0.04  # q_pre での爪先の高さ (ワーク上面から) [m]
 MISS_RISE = 0.02  # 爪先が最低点からこれだけ上がっても物体が浮いていなければ失敗 [m]
 LIFT_SUCCESS = 0.03  # 持ち上げ成功とみなす高さ [m]
@@ -57,6 +60,18 @@ def potential(d, n_touch, lift):
     """報酬整形のポテンシャル Φ。報酬には差分 Φ(s') - Φ(s) だけを入れるので、
     近くで粘っても報酬は貯まらず、エピソード全体の整形分は Φ の終値 - 初期値で頭打ちになる"""
     return 0.2 * (1.0 - np.tanh(d / 0.02)) + 0.2 * n_touch + 2.0 * np.clip(lift / LIFT_SUCCESS, 0.0, 1.0)
+
+
+def grip_mm(a):
+    """開度行動 [-1, 1] を片指の開き [mm] に直す"""
+    return GRIP_CLOSE_MM + (a + 1.0) / 2.0 * (GRIP_OPEN_MAX_MM - GRIP_CLOSE_MM)
+
+
+def grasp_depth(half_h):
+    """スクリプト方策が爪先を推定上面から下げる量 [m]。half_h は対象の鉛直方向の半寸法。
+    底より GRASP_BELOW 下を狙う (爪は押し込み方向に逃げる)。以前の「中心の高さまで (1.2 * half_h)」は高すぎて、
+    推定の高さのずれ (3mm) でワッシャ・ナットなど薄い物の上で閉じていた (ばら積み 40 個で成功率 0.43 → 0.54)"""
+    return np.minimum(ScriptedPolicy.GRASP_DEPTH, 2.0 * half_h + GRASP_BELOW)
 
 
 def yaw_quat(yaw):
@@ -242,7 +257,7 @@ class GraspEnv(sim.Sim):
         tgt = self.control.joint_target_q.numpy()
         tgt[self.arm_q] = self.q_cmd
         self.control.joint_target_q.assign(tgt)
-        self.set_gripper((self.act_filt[-1] + 1.0) / 2.0 * GRIP_OPEN_MAX_MM)
+        self.set_gripper(grip_mm(self.act_filt[-1]))
         for _ in range(CTRL_FRAMES):
             super().step()
         self.t += 1
@@ -321,7 +336,7 @@ class ScriptedPolicy:
         e = env
         top = e.est_pos[2] + e.obj_half_h
         xy = e.est_pos[:2]
-        depth = min(self.GRASP_DEPTH, 1.2 * e.obj_half_h)  # 小さい物は中心の高さまで
+        depth = grasp_depth(e.obj_half_h)
         self.q_grasp = e.ik.solve([*xy, top - depth], e.grasp_yaw, q_init=e.q_pre)
         self.q_lift = e.ik.solve([*xy, top + 0.06], e.grasp_yaw, q_init=e.q_pre)
         self.phase, self.n = "descend", 0

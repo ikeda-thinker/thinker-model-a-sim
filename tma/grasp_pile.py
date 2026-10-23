@@ -1,4 +1,4 @@
-"""ばら積み版の把持環境。ビンに小物 (ねじ・ピン・ナット・ワッシャ・球・ブロック・カプセル) を落として山を作り、
+"""ばら積み版の把持環境。ビンに小物 (ねじ・ピン・ナット・ワッシャ・ブロック・カプセル) を落として山を作り、
 山の上の方から 1 個を対象にする。対象の位置・向きはノイズ付きの推定値として方策に渡す。
 
     uv run tma/grasp_pile.py --viewer null --episodes 5   # スクリプト方策で把持 (形状別の成功率を表示)
@@ -17,7 +17,7 @@ import newton.examples
 from tma import grasp as ge
 from tma import sim
 
-N_OBJ = 15
+N_OBJ = 40
 BIN_CENTER = ge.OBJ_XY  # ビンの中心 (基準姿勢の爪先の真下)
 BIN_HALF = 0.055  # 内側の半寸法 [m]
 WALL_T = 0.004  # 壁の半厚 [m]
@@ -26,7 +26,7 @@ DROP_GRID = 4  # 落とす位置の格子 (DROP_GRID x DROP_GRID)
 DROP_PITCH = 0.03  # 格子の間隔 [m]
 DROP_Z0 = 0.03  # 1 段目の高さ [m]
 DROP_DZ = 0.02  # 段の間隔 [m]
-SETTLE_FRAMES = 120  # 落として静止するまで待つフレーム数 (2 s)
+SETTLE_FRAMES = 150  # 落として静止するまで待つフレーム数 (2.5 s)
 TARGET_RADIUS = 0.025  # ビン中心からこの距離以内の物体を対象の候補にする [m]
 TOP_BAND = 0.01  # 候補の中で一番高いものからこの高さ以内のものを、埋もれていない対象とみなす [m]
 DENSITY = 2500.0  # [kg/m^3]
@@ -39,7 +39,6 @@ SHAPES = {
     "pin": dict(parts=[("cyl", (0.002, 0.0125), (0, 0, 0))], extents=(0.002, 0.002, 0.0125), axis=(0, 0, 1)),
     "nut": dict(parts=[("cyl", (0.0055, 0.0025), (0, 0, 0))], extents=(0.0055, 0.0055, 0.0025), axis=None),
     "washer": dict(parts=[("cyl", (0.0065, 0.001), (0, 0, 0))], extents=(0.0065, 0.0065, 0.001), axis=None),
-    "ball": dict(parts=[("sph", (0.005,), (0, 0, 0))], extents=(0.005, 0.005, 0.005), axis=None),
     "block": dict(parts=[("box", (0.005, 0.004, 0.008), (0, 0, 0))], extents=(0.005, 0.004, 0.008), axis=(0, 0, 1)),
     "capsule": dict(parts=[("cap", (0.003, 0.008), (0, 0, 0))], extents=(0.003, 0.003, 0.011), axis=(0, 0, 1)),
 }
@@ -99,8 +98,8 @@ def select_target(obj_pos, obj_quat, obj_names, rng):
 
 
 class PileEnv(ge.GraspEnv):
-    NJMAX, NCONMAX = 3000, 600  # 1 環境ぶん。静止した山で約 150 点、落下中のピークでもこの程度
-    RIGID_CONTACTS_PER_ENV = 400  # 実測の最大は 166 点 (山を落とす間はもっと多いので余裕を見る)
+    NJMAX, NCONMAX = 5000, 1000  # 1 環境ぶん。40 個の山で実測の最大は約 330 点
+    RIGID_CONTACTS_PER_ENV = 800  # 40 個の山で実測の最大は約 350 点 (15 個のときは 166 点)
     CAMERA_TARGET = (*BIN_CENTER, 0.02)
     yaw_period = np.pi  # 長軸は 180 度対称
 
@@ -126,8 +125,6 @@ class PileEnv(ge.GraspEnv):
                     builder.add_shape_cylinder(body, xform=xf, radius=dim[0], half_height=dim[1], cfg=cfg)
                 elif kind == "cap":
                     builder.add_shape_capsule(body, xform=xf, radius=dim[0], half_height=dim[1], cfg=cfg)
-                elif kind == "sph":
-                    builder.add_shape_sphere(body, xform=xf, radius=dim[0], cfg=cfg)
                 else:
                     builder.add_shape_box(body, xform=xf, hx=dim[0], hy=dim[1], hz=dim[2], cfg=cfg)
 

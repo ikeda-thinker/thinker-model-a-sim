@@ -227,6 +227,8 @@ if __name__ == "__main__":
                 a = d.sample()
                 act_buf[t], logp_buf[t], val_buf[t] = a, d.log_prob(a).sum(-1), net.value(o)
             obs, rew, done, info = env.step_env(a.cpu().numpy())
+            if "blown" in info and info["blown"].any():
+                print(f"  物理が発散した環境: {np.nonzero(info['blown'])[0].tolist()} (it {it})", flush=True)
             ep_ret += rew
             if info["timeout"].any():  # 時間切れは終端にせず V でブートストラップ
                 with torch.no_grad():

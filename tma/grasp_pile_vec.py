@@ -149,7 +149,7 @@ class VecGraspEnv(sim.Sim):
                 pile = qs[w][self.slot_idx]  # [N_OBJ, 7]
                 cheb = np.maximum(np.abs(pile[:, 0] - gp.BIN_CENTER[0]), np.abs(pile[:, 1] - gp.BIN_CENTER[1]))
                 # ビンの外に出た・飛んだ物体があれば捨てる
-                if np.isfinite(pile).all() and (cheb < gp.BIN_HALF + 0.003).all() and (pile[:, 2] < 0.03).all():
+                if np.isfinite(pile).all() and (cheb < gp.BIN_HALF + 0.003).all() and (pile[:, 2] < gp.WALL_H).all():
                     piles.append(pile.copy())
         if not piles:
             raise RuntimeError("使える山が 1 つも作れなかった")
@@ -182,7 +182,7 @@ class VecGraspEnv(sim.Sim):
 
         self.q_pre[idx] = solve(lambda w: self.half_h[w] + ge.PRE_HEIGHT)
         if self.scripted:
-            depth = np.minimum(ge.ScriptedPolicy.GRASP_DEPTH, 1.2 * self.half_h)
+            depth = ge.grasp_depth(self.half_h)
             self.q_grasp[idx] = solve(lambda w: self.half_h[w] - depth[w], self.q_pre[idx])
             self.q_lift[idx] = solve(lambda w: self.half_h[w] + 0.06, self.q_pre[idx])
             self.phase[idx], self.phase_n[idx] = 0, 0
@@ -258,7 +258,7 @@ class VecGraspEnv(sim.Sim):
         self.q_cmd[:, list(ge.ACT_JOINTS)] += self.act_filt[:, : len(ge.ACT_JOINTS)] * ge.ACT_SCALE
         tgt = self.control.joint_target_q.numpy().reshape(N, self.T)
         tgt[:, self.arm_idx] = self.q_cmd
-        grip = np.clip((self.act_filt[:, -1] + 1.0) / 2.0 * ge.GRIP_OPEN_MAX_MM * 1e-3, 0.0, sim.HANDE_STROKE)
+        grip = np.clip(ge.grip_mm(self.act_filt[:, -1]) * 1e-3, 0.0, sim.HANDE_STROKE)
         tgt[:, self.gripper_dof] = tgt[:, self.gripper_r_dof] = grip
         self.control.joint_target_q.assign(tgt.reshape(-1))
         for _ in range(ge.CTRL_FRAMES):
@@ -291,18 +291,30 @@ class VecGraspEnv(sim.Sim):
             - 5.0 * (dropped | missed)
             - 0.01 * ((a - self.act_prev) ** 2).sum(axis=1)
         )
+        # 物理が発散した環境 (まれ。256 環境で PPO の 1 イテレーション目に起きた)。報酬に NaN が 1 つでも混ざると
+        # 学習側の報酬スケールの統計が NaN になり以降の更新が全部壊れるので、報酬 0 で打ち切り、時間切れにも数えない
+        blown = ~(np.isfinite(obj).all(axis=1) & np.isfinite(q).all(axis=1) & np.isfinite(qd).all(axis=1))
+        reward[blown] = 0.0
+        phi[blown] = 0.0
         self.act_prev = a
         self.phi_prev = phi
-        done = success | dropped | missed | (self.t >= ge.EP_STEPS) | ~np.isfinite(obj).all(axis=1)
+        done = success | dropped | missed | (self.t >= ge.EP_STEPS) | blown
         info = dict(
             success=success & done, dropped=dropped & done, missed=missed & done,
-            timeout=done & ~(success | dropped | missed), lift=lift, dist=d,
+            timeout=done & ~(success | dropped | missed | blown), blown=blown, lift=lift, dist=d,
             type=[self.target_type[w] for w in range(N)],  # リセット前の対象の形状
         )
         done_idx = np.nonzero(done)[0]
         if info["timeout"].any():
-            info["final_obs"] = self.observe()  # 時間切れ環境の value ブートストラップ用 (リセット前の観測)
+            # 時間切れ環境の value ブートストラップ用 (リセット前の観測)。発散した環境の行は使わないが NaN * 0 にならないよう 0 に
+            info["final_obs"] = np.nan_to_num(self.observe(), nan=0.0, posinf=0.0, neginf=0.0)
         self.reset_envs(done_idx)
+        if blown.any():
+            # MuJoCo は前ステップの加速度 (qacc_warmstart) を次の解の初期値に使うので、関節状態を書き直しても
+            # NaN が残って毎ステップ発散し続ける。そのワールドの内部バッファだけ消す (flags=0 で関節状態は触らない)
+            mask = np.zeros(N + 1, dtype=bool)
+            mask[:N] = blown
+            self.solver.reset(self.state_0, wp.array(mask, dtype=wp.bool), flags=0)
         self.obs = self.observe()
         return self.obs, reward.astype(np.float32), done, info
 

@@ -36,7 +36,8 @@ class VecGraspEnv(sim.Sim):
     PHASE_TOL = 1e-3  # スクリプト方策が「到達」とみなす関節目標の誤差 [rad]
     LIBRARY_ROUNDS = 2  # 山のライブラリ: 全環境で同時に作る回数 (num_envs * 回数 個の山)
     # 学習スクリプトが集計に使う結果の種類 (info のキー, 表示名)
-    OUTCOMES = (("success", "成功"), ("dropped", "落下"), ("missed", "空振り"), ("timeout", "時間切れ"))
+    MULTI_LIFT = 0.01  # 対象以外がこれ以上持ち上がったら複数個取り [m]
+    OUTCOMES = (("success", "成功"), ("multi", "複数取り"), ("dropped", "落下"), ("missed", "空振り"), ("timeout", "時間切れ"))
 
     def add_scene(self, builder):
         gp.PileEnv.add_scene(self, builder)
@@ -75,6 +76,7 @@ class VecGraspEnv(sim.Sim):
         self.tip_z_min = np.zeros(N)
         self.phi_prev = np.zeros(N)
         self.obj_z0 = np.zeros(N)
+        self.objs_z0 = np.zeros((N, len(self.obj_bodies)))  # リセット時の全物体の高さ
         self.target_k = np.zeros(N, dtype=int)
         self.target_type = [""] * N
         self.est_pos = np.zeros((N, 3))
@@ -209,6 +211,7 @@ class VecGraspEnv(sim.Sim):
         self.t[idx], self.hold[idx], self.lift_max[idx] = 0, 0, 0.0
         bq = self.read()[2]
         tip = self.tip_mid(bq)
+        self.objs_z0[idx] = bq[idx][:, self.obj_bodies, 2]
         self.tip_z_min[idx] = tip[idx, 2]
         obj = bq[idx, np.array(self.obj_bodies)[self.target_k[idx]], :3]
         self.phi_prev[idx] = ge.potential(np.linalg.norm(tip[idx] - obj, axis=1), 0, obj[:, 2] - self.obj_z0[idx])
@@ -251,11 +254,16 @@ class VecGraspEnv(sim.Sim):
         ).astype(np.float32)
 
     # ---- ステップ ----
-    def step_env(self, action):
+    def step_env(self, action, q_goal=None):
+        """q_goal ([N, 6]、NaN の行は無視) を渡した環境は、行動の関節成分の代わりにアーム 6 軸の目標をそのまま使う
+        (手先姿勢で動かす古典制御用。wrist_2 も動かせる)。開度は行動の最後の成分で決める"""
         N = self.num_envs
         a = np.clip(np.asarray(action, dtype=float), -1.0, 1.0)
         self.act_filt = ge.ACT_EMA * a + (1.0 - ge.ACT_EMA) * self.act_filt
         self.q_cmd[:, list(ge.ACT_JOINTS)] += self.act_filt[:, : len(ge.ACT_JOINTS)] * ge.ACT_SCALE
+        if q_goal is not None:
+            rows = ~np.isnan(q_goal[:, 0])
+            self.q_cmd[rows] = q_goal[rows]
         tgt = self.control.joint_target_q.numpy().reshape(N, self.T)
         tgt[:, self.arm_idx] = self.q_cmd
         grip = np.clip(ge.grip_mm(self.act_filt[:, -1]) * 1e-3, 0.0, sim.HANDE_STROKE)
@@ -279,7 +287,12 @@ class VecGraspEnv(sim.Sim):
             grip=q[:, self.gripper_q] * 1e3, lift=lift, type=list(self.target_type),
         )
         self.hold = np.where(lift > ge.LIFT_SUCCESS, self.hold + 1, 0)
-        success = self.hold >= ge.HOLD_STEPS
+        reached = self.hold >= ge.HOLD_STEPS
+        # 複数個取り: 対象以外の物体も初期位置から MULTI_LIFT 以上持ち上がっていたら NG
+        others = bq[:, self.obj_bodies, 2] - self.objs_z0  # [N, N_OBJ]
+        others[np.arange(N), self.target_k] = 0.0
+        multi = reached & (others > self.MULTI_LIFT).any(axis=1)
+        success = reached & ~multi
         dropped = (self.lift_max > 0.01) & (lift < 0.003)
         self.tip_z_min = np.minimum(self.tip_z_min, tip[:, 2])
         missed = (tip[:, 2] - self.tip_z_min > ge.MISS_RISE) & (lift < 0.005) & ~dropped
@@ -288,7 +301,7 @@ class VecGraspEnv(sim.Sim):
         reward = (
             phi - self.phi_prev
             + 20.0 * success
-            - 5.0 * (dropped | missed)
+            - 5.0 * (dropped | missed | multi)
             - 0.01 * ((a - self.act_prev) ** 2).sum(axis=1)
         )
         # 物理が発散した環境 (まれ。256 環境で PPO の 1 イテレーション目に起きた)。報酬に NaN が 1 つでも混ざると
@@ -298,10 +311,10 @@ class VecGraspEnv(sim.Sim):
         phi[blown] = 0.0
         self.act_prev = a
         self.phi_prev = phi
-        done = success | dropped | missed | (self.t >= ge.EP_STEPS) | blown
+        done = success | multi | dropped | missed | (self.t >= ge.EP_STEPS) | blown
         info = dict(
-            success=success & done, dropped=dropped & done, missed=missed & done,
-            timeout=done & ~(success | dropped | missed | blown), blown=blown, lift=lift, dist=d,
+            success=success & done, multi=multi & done, dropped=dropped & done, missed=missed & done,
+            timeout=done & ~(success | multi | dropped | missed | blown), blown=blown, lift=lift, dist=d,
             type=[self.target_type[w] for w in range(N)],  # リセット前の対象の形状
         )
         done_idx = np.nonzero(done)[0]
@@ -419,20 +432,18 @@ if __name__ == "__main__":
         if args.print_every and (done[w] or env.disp["t"][w] % args.print_every == 0):
             print(env.nail_text(w))
             if done[w]:
-                res = next(k for k in ("success", "dropped", "missed", "timeout") if info[k][w])
+                res = next(k for k in ("success", "multi", "dropped", "missed", "timeout") if info[k][w])
                 print(f"=> env{w} {info['type'][w]}: {res}")
         for w in np.nonzero(done)[0]:
-            s = stats.setdefault(info["type"][w], [0, 0, 0, 0, 0])  # 試行, 成功, 落下, 空振り, 時間切れ
+            s = stats.setdefault(info["type"][w], [0] * 6)  # 試行, 成功, 複数取り, 落下, 空振り, 時間切れ
             s[0] += 1
-            s[1] += bool(info["success"][w])
-            s[2] += bool(info["dropped"][w])
-            s[3] += bool(info["missed"][w])
-            s[4] += bool(info["timeout"][w])
+            for j, k in enumerate(("success", "multi", "dropped", "missed", "timeout")):
+                s[1 + j] += bool(info[k][w])
             finished += 1
     dt = time.time() - t0
     print(f"{steps} env-steps, {dt:.1f} s -> {steps / dt:.0f} env-steps/s, {finished} episodes")
     tot = np.sum(list(stats.values()), axis=0)
-    print(f"  {'形状':8s} 試行 成功 落下 空振り 時間切れ")
+    print(f"  {'形状':8s} 試行 成功 複数取り 落下 空振り 時間切れ")
     for name in sorted(stats):
         print(f"  {name:8s} " + " ".join(f"{v:4d}" for v in stats[name]))
     print(f"  {'合計':8s} " + " ".join(f"{v:4d}" for v in tot) + f"   成功率 {tot[1] / tot[0]:.2f}")

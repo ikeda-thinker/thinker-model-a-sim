@@ -2,6 +2,8 @@
 
     uv run scripts/train_ppo.py --viewer null --num-envs 64 --iters 500
     uv run scripts/train_ppo.py --viewer null --eval ckpt/ppo_latest.pt --episodes 200   # 決定的方策で評価
+    uv run scripts/train_ppo.py --viewer null --policy lib --episodes 200                 # 手探り制御ライブラリ (比較用)
+    uv run scripts/train_ppo.py --viewer null --eval ckpt/ppo_latest.pt --policy hybrid   # ライブラリで接近 → PPO
     uv run scripts/train_ppo.py --task peg --viewer null --num-envs 256 --bc-steps 0 --save-dir ckpt/peg
 
 - 観測は実行時平均・分散で正規化、報酬は割引リターンの標準偏差でスケーリング
@@ -18,6 +20,7 @@ import torch
 import torch.nn as nn
 
 import newton.examples
+from tma import ff_lib as ff
 from tma import grasp as ge
 from tma import grasp_pile_vec as gv
 from tma import peg as pe
@@ -71,17 +74,35 @@ def load(path, net, obs_rms, ret_rms):
     ret_rms.var, ret_rms.count = ck["ret"]
 
 
-def evaluate(env, net, obs_rms, episodes, noise=0.0):
+def evaluate(env, net, obs_rms, episodes, noise=0.0, policy="ppo"):
+    """policy: ppo = 学習した方策、lib = 手探り制御ライブラリ (tma/ff_lib.py)、
+    hybrid = ライブラリの高速アプローチで接触 (か把持深さ) まで下ろし、そこから先を学習した方策に任せる"""
     stats, finished = {}, 0
     obs = env.obs
     if hasattr(env.viewer, "hide_loading_splash"):
         env.viewer.hide_loading_splash()
+    ctrl = None
+    if policy != "ppo":
+        ctrl = ff.FFController(env)
+        ctrl.reset(np.arange(env.num_envs))
     while finished < episodes and env.viewer.is_running():
-        with torch.no_grad():
-            act = net.dist(normalize(obs_rms, obs)).mean.cpu().numpy()
-        act = act + noise * np.random.randn(*act.shape)
-        obs, _, done, info = env.step_env(act)
+        q_goal = None
+        if policy != "lib":
+            with torch.no_grad():
+                act = net.dist(normalize(obs_rms, obs)).mean.cpu().numpy()
+            act = act + noise * np.random.randn(*act.shape)
+        if ctrl is not None:
+            lib_act, q_goal = ctrl.act()
+            if policy == "lib":
+                act = lib_act
+            else:
+                lib = ctrl.phase == ff.APPROACH
+                act[lib] = lib_act[lib]
+                q_goal[~lib] = np.nan
+        obs, _, done, info = env.step_env(act) if ctrl is None else env.step_env(act, q_goal)
         env.render()  # null ビューアでは何もしない
+        if ctrl is not None:
+            ctrl.reset(np.nonzero(done)[0])
         for w in np.nonzero(done)[0]:
             s = stats.setdefault(info["type"][w], [0] * (1 + len(env.OUTCOMES)))
             s[0] += 1
@@ -163,12 +184,22 @@ if __name__ == "__main__":
     parser.add_argument("--eval", default=None, help="このチェックポイントを決定的方策で評価して終わる")
     parser.add_argument("--eval-noise", type=float, default=0.0, help="--eval で行動に足すガウスノイズの std (探索ノイズへの感度を見る)")
     parser.add_argument("--episodes", type=int, default=200, help="--eval のエピソード数")
+    parser.add_argument(
+        "--policy", choices=("ppo", "lib", "hybrid"), default="ppo",
+        help="--eval で動かす方策 (pick のみ)。lib: 手探り制御ライブラリだけ (チェックポイント不要)、hybrid: ライブラリで接近 → PPO",
+    )
     parser.add_argument("--pos-noise-mm", type=float, default=ge.EST_POS_STD * 1e3)
     parser.add_argument("--yaw-noise-deg", type=float, default=float(np.degrees(ge.EST_YAW_STD)))
     pe.add_env_args(parser)
+    ff.add_args(parser)
     parser.set_defaults(num_frames=10**9)
     viewer, args = newton.examples.init(parser)
     pe.apply_env_args(args)
+    ff.apply_args(args)
+    if args.policy != "ppo" and args.task != "pick":
+        parser.error("--policy lib / hybrid は --task pick のみ")
+    if args.policy == "hybrid" and not args.eval:
+        parser.error("--policy hybrid には --eval (PPO のチェックポイント) が要る")
     ge.EST_POS_STD = args.pos_noise_mm * 1e-3
     ge.EST_YAW_STD = np.radians(args.yaw_noise_deg)
     torch.manual_seed(args.seed)
@@ -185,8 +216,8 @@ if __name__ == "__main__":
     if args.resume or args.eval:
         load(args.resume or args.eval, net, obs_rms, ret_rms)
 
-    if args.eval:
-        evaluate(env, net, obs_rms, args.episodes, args.eval_noise)
+    if args.eval or args.policy == "lib":
+        evaluate(env, net, obs_rms, args.episodes, args.eval_noise, args.policy)
         viewer.close()
         sys.exit()
 

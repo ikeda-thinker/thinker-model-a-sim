@@ -152,6 +152,17 @@ class ArmIK:
         self.solver.step(q, q, iterations=iters)
         return q.numpy()[:, :6].copy()
 
+    def solve_pose_batch(self, tip_pos, rot, q_init, iters=8):
+        """爪先中点を tip_pos [n, 3]、ツールリンクの向きを rot [n, 4] (xyzw) にする関節角 [n, 6]。
+        傾きも指定できる版。毎制御ステップ前回の解から少しだけ動かす用途なので反復は少なめ"""
+        self.pos_obj.target_positions.assign(np.asarray(tip_pos, dtype=np.float32).reshape(self.n, 3))
+        self.rot_obj.target_rotations.assign(np.asarray(rot, dtype=np.float32).reshape(self.n, 4))
+        q0 = np.tile(self.q_seed, (self.n, 1))
+        q0[:, :6] = q_init
+        q = wp.array(q0, dtype=float)
+        self.solver.step(q, q, iterations=iters)
+        return q.numpy()[:, :6].copy()
+
     def solve(self, tip_pos, yaw, q_init=None, iters=48):
         """爪先中点を tip_pos、手先の yaw を基準姿勢から yaw [rad] 回した姿勢にする関節角 (アーム 6 軸) を返す。"""
         self.pos_obj.set_target_position(0, wp.vec3(*tip_pos))

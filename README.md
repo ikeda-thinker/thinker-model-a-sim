@@ -13,6 +13,8 @@ tma/                  シミュレータ本体と環境 (import して使う)
   grasp_pile.py       ばら積み版 (1 環境)
   grasp_pile_vec.py   ばら積み版の並列版 (学習に使う)
   peg.py              ピン挿入の RL 環境 (並列版)
+  ros_node.py         Sim を ROS2 ノードとして動かす
+launch/               ROS2 の launch (ノード + robot_state_publisher + RViz) と RViz の設定
 scripts/
   view.py             URDF をブラウザで見る
   train_ppo.py        PPO で学習・評価
@@ -33,6 +35,30 @@ uv run scripts/view.py       # http://localhost:8080 を開く
 ```
 
 別の URDF を見る場合は `uv run scripts/view.py <file.urdf>`。
+
+## ROS2 (WSL2)
+
+WSL2 の Ubuntu 26.04 + ROS2 Lyrical (Python 3.14 でこのプロジェクトと揃う) で動かす。
+
+```sh
+sudo apt install ros-lyrical-desktop   # apt のリポジトリ追加は ROS2 公式の手順どおり
+# リポジトリの .venv は Windows 側の環境なので、WSL では別の場所に作る。
+# ROS の Python パッケージ (rclpy が使う em など) は apt でシステムに入るので、システムの site-packages も見えるようにする
+export UV_PROJECT_ENVIRONMENT=$HOME/.venvs/tma   # ~/.bashrc に書いておく
+uv venv --python /usr/bin/python3 --system-site-packages $UV_PROJECT_ENVIRONMENT
+uv sync
+
+source /opt/ros/lyrical/setup.bash
+ros2 launch launch/sim.launch.py               # ノード + robot_state_publisher + RViz
+uv run tma/ros_node.py --viewer null           # ノードだけ
+```
+
+トピックは `/clock`・`/joint_states`・`/joint_command` (関節目標、JointState)・`/tf` (箱などロボット以外の物体)。詳しくは `tma/ros_node.py` の docstring。
+
+```sh
+ros2 topic pub --once /joint_command sensor_msgs/msg/JointState \
+  "{name: [thinker_arm_shoulder_pan_joint, robotiq_hande_left_finger_joint], position: [0.5, 0.02]}"
+```
 
 ## メッシュ
 

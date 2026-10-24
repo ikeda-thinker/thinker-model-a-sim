@@ -3,10 +3,12 @@
     uv run tma/sim.py                 # OpenGL viewer
     uv run tma/sim.py --viewer viser  # browser viewer (http://localhost:8080)
     uv run tma/sim.py --viewer null --num-frames 500   # headless smoke test
+    uv run tma/sim.py --urdf cobotta.urdf             # COBOTTA 版 (scripts/make_cobotta_urdf.py)
 """
 import argparse
 import re
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -56,6 +58,31 @@ NAIL_PAD_CONDIM = 4
 
 ROOT = Path(__file__).resolve().parent.parent
 PKGS = ROOT / "packages"
+
+
+@dataclass(frozen=True)
+class Robot:
+    """URDF ごとに違う所。アームの関節は "thinker_arm_" で始まる名前で探す (どの URDF も同じ)。"""
+
+    gripper_joints: tuple  # (左指, 右指)。どちらも 0 が閉で正に開き、右指は URDF の mimic で左指に追従する
+    stroke: float  # 片指のストローク [m]
+    arm_q_deg: tuple | None  # 初期姿勢 [deg]。None なら全関節 0
+    box_pos: tuple  # 把持対象の箱の位置 (爪の間)
+    box_size: float = BOX_SIZE  # 箱の一辺 [m]。密度は BOX_MASS / BOX_SIZE^3 のまま
+
+
+ROBOTS = {
+    "tma": Robot(("robotiq_hande_left_finger_joint", "robotiq_hande_right_finger_joint"), HANDE_STROKE, None, BOX_POS),
+    # COBOTTA + 純正グリッパ (scripts/make_cobotta_urdf.py)。全閉 0、片指 15mm で全開 (爪先のすきま約 34mm)。
+    # 姿勢は前腕を水平に、手先を真下に向けたもの。箱はこの姿勢の FK で爪先の中点 (0.1775, -0.0445, 0.1393) に中心を置く
+    "cobotta": Robot(
+        ("cobotta_gripper_left_finger_joint", "cobotta_gripper_right_finger_joint"),
+        0.015,
+        (0.0, 0.0, 90.0, 0.0, 90.0, 0.0),
+        (0.1775, -0.0445, 0.1393),
+        box_size=0.02,
+    ),
+}
 
 
 def resolve_meshes(urdf_path: Path) -> str:
@@ -111,11 +138,14 @@ class Sim:
     # バラ積みでの実測は 1 環境あたり最大 166 点。None なら既定の見積もり
     RIGID_CONTACTS_PER_ENV = None
     NJMAX, NCONMAX = 512, 256  # MuJoCo の拘束・接触バッファ。物体が多いときはサブクラスで増やす
-    CAMERA_TARGET = BOX_POS
+    CAMERA_TARGET = None  # None なら箱の位置 (Robot.box_pos)
 
     def __init__(self, viewer, args):
         self.viewer = viewer
         self.args = args
+        self.robot = ROBOTS[Path(args.urdf).stem]
+        if self.CAMERA_TARGET is None:
+            self.CAMERA_TARGET = self.robot.box_pos
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
         self.substeps = 20  # 接触を硬くしたので細かく (MuJoCo は時定数を 2*dt 未満にできない)
@@ -130,10 +160,10 @@ class Sim:
             builder.joint_target_mode[i] = int(JointTargetMode.POSITION)
         for j, label in enumerate(builder.joint_label):
             if builder.joint_type[j] != int(newton.JointType.FIXED) and (
-                "thinker_arm_" in label or "hande_left_finger_joint" in label or "hande_right_finger_joint" in label
+                "thinker_arm_" in label or label.endswith(self.robot.gripper_joints)
             ):
                 d = builder.joint_qd_start[j]
-                # アームは剛に固定、Hande は力で閉じる
+                # アームは剛に固定、グリッパは力で閉じる
                 arm = "thinker_arm_" in label
                 builder.joint_target_ke[d] = 20000.0 if arm else 2000.0
                 builder.joint_target_kd[d] = 2000.0 if arm else 100.0
@@ -148,8 +178,9 @@ class Sim:
             for j, label in enumerate(builder.joint_label)
             if "thinker_arm_" in label and builder.joint_type[j] != int(newton.JointType.FIXED)
         ]
-        if self.ARM_Q_DEG is not None:
-            for k, deg in zip(self.arm_q_index, self.ARM_Q_DEG):
+        arm_q_deg = self.ARM_Q_DEG if self.ARM_Q_DEG is not None else self.robot.arm_q_deg
+        if arm_q_deg is not None:
+            for k, deg in zip(self.arm_q_index, arm_q_deg):
                 builder.joint_q[k] = np.radians(deg)
         builder.add_ground_plane()
         self.add_scene(builder)
@@ -174,10 +205,17 @@ class Sim:
                 self.nail_q_index[f"{f}_{a}"] = int(q_start[j])
                 self.nail_dof_index[f"{f}_{a}"] = int(qd_start[j])
 
-        gj = next(i for i, l in enumerate(labels) if l.endswith("robotiq_hande_left_finger_joint"))
+        gj = next(i for i, l in enumerate(labels) if l.endswith(self.robot.gripper_joints[0]))
         self.gripper_q, self.gripper_dof = int(q_start[gj]), int(qd_start[gj])
-        gr = next(i for i, l in enumerate(labels) if l.endswith("robotiq_hande_right_finger_joint"))
+        gr = next(i for i, l in enumerate(labels) if l.endswith(self.robot.gripper_joints[1]))
         self.gripper_r_dof = int(qd_start[gr])  # 右指も左指と同じ目標にする (下の set_gripper)
+        self.gripper_rq = int(q_start[gr])
+        # グリッパは全開から始める。閉じた (関節値 0) まま始めると、爪の間に置いた箱に爪がめり込んで弾き飛ばす
+        q = self.model.joint_q.numpy()
+        per_world = len(q) // self.num_envs
+        for w in range(self.num_envs):
+            q[[w * per_world + self.gripper_q, w * per_world + self.gripper_rq]] = self.robot.stroke
+        self.model.joint_q.assign(q)
         self.box_body = next((i for i, l in enumerate(self.model.body_label) if l.endswith("box")), None)
 
         self.model.mujoco.solref_mode.fill_(SOLREF_MODE_FORCE_SPACE)
@@ -220,11 +258,14 @@ class Sim:
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
-        # アームは初期姿勢を目標にして保持する (q と qd の並びはアームでは同じ)
+        # アームは初期姿勢を、グリッパは全開を目標にして保持する (q と qd の並びはアームとグリッパでは同じ)
         tgt = self.control.joint_target_q.numpy()
         q = self.model.joint_q.numpy()
         for k in self.arm_q_index:
             tgt[k] = q[k]
+        per_world = len(tgt) // self.num_envs
+        for w in range(self.num_envs):
+            tgt[[w * per_world + self.gripper_dof, w * per_world + self.gripper_r_dof]] = self.robot.stroke
         self.control.joint_target_q.assign(tgt)
         if self.RIGID_CONTACTS_PER_ENV is not None:
             self.model.rigid_contact_max = self.RIGID_CONTACTS_PER_ENV * self.num_envs
@@ -241,12 +282,13 @@ class Sim:
     def add_scene(self, builder):
         """ロボット以外の物体を置く。サブクラスで差し替える。"""
         if self.args.box:
-            h = BOX_SIZE / 2
+            h = self.robot.box_size / 2
+            p = self.robot.box_pos
             # 箱の下に静止した台を置く (持ち上げは手順の後)
             builder.add_shape_box(
-                -1, xform=wp.transform(wp.vec3(BOX_POS[0], BOX_POS[1], BOX_POS[2] - h - 0.01), wp.quat_identity()), hx=0.1, hy=0.1, hz=0.01
+                -1, xform=wp.transform(wp.vec3(p[0], p[1], p[2] - h - 0.01), wp.quat_identity()), hx=0.1, hy=0.1, hz=0.01
             )
-            box = builder.add_body(xform=wp.transform(wp.vec3(*BOX_POS), wp.quat_identity()), label="box")
+            box = builder.add_body(xform=wp.transform(wp.vec3(*p), wp.quat_identity()), label="box")
             cfg = newton.ModelBuilder.ShapeConfig(density=BOX_MASS / BOX_SIZE**3, mu=1.0)
             builder.add_shape_box(box, hx=h, hy=h, hz=h, cfg=cfg)
 
@@ -273,11 +315,11 @@ class Sim:
                 place(client)
 
     def set_gripper(self, opening_mm):
-        """Hande の片指の開き [mm] (0=閉、25=全開)。右指は URDF の mimic で追従する。"""
+        """グリッパの片指の開き [mm] (0=閉、Hand-E は 25、COBOTTA は 15 で全開)。右指は URDF の mimic で追従する。"""
         tgt = self.control.joint_target_q.numpy()
         # 右指の目標を放っておくと URDF 取り込み時の値 (リミットの中間 13.4mm) のまま左指と綱引きになり、
         # 全閉にしても片指 6.6mm で止まる。mimic 拘束と矛盾しないよう同じ値を入れる
-        tgt[self.gripper_dof] = tgt[self.gripper_r_dof] = np.clip(opening_mm * 1e-3, 0.0, HANDE_STROKE)
+        tgt[self.gripper_dof] = tgt[self.gripper_r_dof] = np.clip(opening_mm * 1e-3, 0.0, self.robot.stroke)
         self.control.joint_target_q.assign(tgt)
 
     def gripper_opening_mm(self):

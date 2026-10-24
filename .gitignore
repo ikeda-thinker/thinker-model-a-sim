@@ -12,6 +12,7 @@ wheels/
 # Public mesh packages: fetch with tools/fetch_packages.sh
 packages/ur_description/
 packages/robotiq_hande_description/
+packages/denso_cobotta_descriptions/
 
 # 学習のチェックポイント
 ckpt/

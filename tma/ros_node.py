@@ -75,9 +75,9 @@ class SimNode(Node):
     def on_command(self, msg: JointState):
         tgt = self.sim.control.joint_target_q.numpy()
         for name, pos in zip(msg.name, msg.position):
-            if name in ("robotiq_hande_left_finger_joint", "robotiq_hande_right_finger_joint"):
+            if name in self.sim.robot.gripper_joints:
                 # 左右の目標を揃えないと mimic 拘束と綱引きになる (Sim.set_gripper)
-                tgt[self.sim.gripper_dof] = tgt[self.sim.gripper_r_dof] = np.clip(pos, 0.0, sim.HANDE_STROKE)
+                tgt[self.sim.gripper_dof] = tgt[self.sim.gripper_r_dof] = np.clip(pos, 0.0, self.sim.robot.stroke)
             elif name in self.dof_of:
                 tgt[self.dof_of[name]] = pos
             else:

@@ -3,6 +3,7 @@
     source /opt/ros/lyrical/setup.bash
     ros2 launch launch/sim.launch.py
     ros2 launch launch/sim.launch.py rviz:=false viewer:=gl   # RViz なしで Newton の OpenGL ビューア
+    ros2 launch launch/sim.launch.py urdf:=cobotta.urdf       # COBOTTA 版
 
 シミュレータのノードは uv の環境 (newton・warp) で、それ以外は ROS の Python で動かす。
 """
@@ -11,7 +12,7 @@ import re
 from pathlib import Path
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -33,23 +34,31 @@ def robot_description(urdf_path: Path) -> str:
     return re.sub(r'filename="package://([^"]+)"', sub, urdf_path.read_text(encoding="utf-8"))
 
 
+def state_publisher(context):
+    urdf = ROOT / LaunchConfiguration("urdf").perform(context)
+    return [
+        Node(
+            package="robot_state_publisher",
+            executable="robot_state_publisher",
+            parameters=[{"robot_description": robot_description(urdf), "use_sim_time": True}],
+        )
+    ]
+
+
 def generate_launch_description():
     sim_time = {"use_sim_time": True}
     return LaunchDescription([
         DeclareLaunchArgument("rviz", default_value="true"),
         DeclareLaunchArgument("viewer", default_value="null", description="Newton のビューア (null / gl / viser)"),
+        DeclareLaunchArgument("urdf", default_value="tma.urdf", description="リポジトリ直下の URDF (tma.urdf / cobotta.urdf)"),
         ExecuteProcess(
-            cmd=["uv", "run", "tma/ros_node.py", "--viewer", LaunchConfiguration("viewer")],
+            cmd=["uv", "run", "tma/ros_node.py", "--viewer", LaunchConfiguration("viewer"), "--urdf", LaunchConfiguration("urdf")],
             cwd=str(ROOT),
             # リポジトリの .venv は Windows 側の環境なので、WSL では別の場所に作る
             additional_env={"UV_PROJECT_ENVIRONMENT": os.environ.get("UV_PROJECT_ENVIRONMENT", str(Path.home() / ".venvs" / "tma"))},
             output="screen",
         ),
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            parameters=[{"robot_description": robot_description(ROOT / "tma.urdf"), **sim_time}],
-        ),
+        OpaqueFunction(function=state_publisher),
         Node(
             package="rviz2",
             executable="rviz2",

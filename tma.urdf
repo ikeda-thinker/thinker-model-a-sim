@@ -489,10 +489,12 @@
   <!-- links of robot -->
   <!-- ************** -->
   <link name="left_thf_base_link">
+    <!-- 質量は製品仕様 (Think Hand F の本体重量 250g、グリッパ部を除く) を左右で半分にした 125g から、可動部 (x/y/z_link・爪など 62g) を引いた値。
+         重心・慣性は当たり判定 (thf.stl の凸包) を一様な密度とみなして計算 -->
     <inertial>
-      <origin rpy="0 0 0" xyz="0 -0.01 0.064"/>
-      <mass value="0.285"/>
-      <inertia ixx="1.5e-4" ixy="0" ixz="0" iyy="1.1e-4" iyz="0" izz="0.86e-4"/>
+      <origin rpy="0 0 0" xyz="0.0039 -0.0124 0.0284"/>
+      <mass value="0.063"/>
+      <inertia ixx="2.80e-5" ixy="0" ixz="-4.0e-8" iyy="1.63e-5" iyz="-3.01e-6" izz="2.19e-5"/>
     </inertial>
     <visual>
       <!-- Think Hand F (tools/convert_meshes.py で CAD から作成)。上端の板が爪の穴 (深さ 8mm) に奥まで入る位置 -->
@@ -762,10 +764,12 @@
   <!-- links of robot -->
   <!-- ************** -->
   <link name="right_thf_base_link">
+    <!-- 質量は製品仕様 (Think Hand F の本体重量 250g、グリッパ部を除く) を左右で半分にした 125g から、可動部 (x/y/z_link・爪など 62g) を引いた値。
+         重心・慣性は当たり判定 (thf.stl の凸包) を一様な密度とみなして計算 -->
     <inertial>
-      <origin rpy="0 0 0" xyz="0 -0.01 0.064"/>
-      <mass value="0.285"/>
-      <inertia ixx="1.5e-4" ixy="0" ixz="0" iyy="1.1e-4" iyz="0" izz="0.86e-4"/>
+      <origin rpy="0 0 0" xyz="0.0039 -0.0124 0.0284"/>
+      <mass value="0.063"/>
+      <inertia ixx="2.80e-5" ixy="0" ixz="-4.0e-8" iyy="1.63e-5" iyz="-3.01e-6" izz="2.19e-5"/>
     </inertial>
     <visual>
       <!-- Think Hand F (tools/convert_meshes.py で CAD から作成)。上端の板が爪の穴 (深さ 8mm) に奥まで入る位置 -->
